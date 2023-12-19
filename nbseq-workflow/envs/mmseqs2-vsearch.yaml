@@ -1,0 +1,15 @@
+# code/environments/exact/ebca16bd2afa552b3e747a9b50274acd_.yaml
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- anndata=0.8.0
+- biom-format=2.1.14
+- biopython=1.80
+- mmseqs2=14.7e284
+- pandas=1.5.2
+- python=3.11.0
+- samtools=1.16.1
+- vsearch=2.22.1
+- zlib=1.2.13

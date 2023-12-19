@@ -1,0 +1,113 @@
+snakemake@source('common.R')
+snakemake_log_start(snakemake)
+
+library(dada2)
+library(parallel)
+
+snakemake_use_threads(snakemake)
+message("Merging denoised paired-end reads and writing feature table with denoised sequences...")
+
+
+# read in denoised files
+message("Reading denoised sequences (dadas)...")
+ddFs <- readRDS(snakemake@input[["dadas_fwd"]])
+ddRs <- readRDS(snakemake@input[["dadas_rev"]])
+
+message("- Denoised fwd reads: ", format(object.size(ddFs),units="auto"))
+message("- Denoised rev reads: ", format(object.size(ddRs),units="auto"))
+
+
+# # read in each dereplicated file
+# message("Reading dereplicated sequences...")
+# # drpFs <- readRDS(snakemake@input[["dereps_fwd"]])
+# # drpRs <- readRDS(snakemake@input[["dereps_rev"]])
+# drpFs <- do.call(c, lapply(snakemake@input[["dereps_fwd"]], readRDS)) #readRDS(snakemake@input[["dereps_fwd"]])
+# drpRs <- do.call(c, lapply(snakemake@input[["dereps_rev"]], readRDS)) #readRDS(snakemake@input[["dereps_rev"]])
+
+# MERGE
+# =====
+
+# ask dada2 for denoised, paired-end sequences. It is kind of confusing to
+# extract these sequences directly from the dada-class and derep-class objects,
+# so we'll have dada2 do it.
+# the `justConcatenate` parameter will cause the fwd and rc(rev) sequences to
+# be joined by "NNNNNNNNNN"; we will split them back out and undo the rc after.
+message("Merging paired end sequences by concatenating")
+params <- list(
+	justConcatenate = TRUE,
+	verbose = TRUE)
+if ("merge" %in% names(snakemake@params) && length(snakemake@params[["merge"]]) > 0) {
+	params <- modifyList(params, snakemake@params[["merge"]])
+}
+print(params)
+# args <- c(list( dadaF = ddFs, derepF = drpFs, dadaR = ddRs, derepR = drpRs ), params)
+# mergers <- do.call(mergePairs, args)
+
+#mergers <- vector(mode="list", length=length(ddFs))
+
+derep_filenames <- data.frame(
+	fwd=snakemake@input[["dereps_fwd"]],
+	rev=snakemake@input[["dereps_rev"]],
+	name=tools::file_path_sans_ext(basename(snakemake@input[["dereps_fwd"]]))
+)
+
+# print(derep_filenames)
+message("Merging sequences from ",nrow(derep_filenames)," samples...")
+message("Using parallel processing with ", snakemake@threads, " threads...")
+
+mergers <- mclapply(seq_len(nrow(derep_filenames)), function(i) {
+
+	# drpF and dprR are 1-element lists; the single element is a list of
+	# derep-class objects. Remove this outermost level of list
+	drpF <- unlist(readRDS(derep_filenames[i, 'fwd']), recursive = FALSE)
+	drpR <- unlist(readRDS(derep_filenames[i, 'rev']), recursive = FALSE)
+
+	name <- derep_filenames[i, 'name']
+	message(name)
+
+	mrgs <- do.call(dada2::mergePairs, c(
+			list(
+				dadaF = ddFs[[name]],
+				derepF = drpF,
+				dadaR = ddRs[[name]],
+				derepR = drpR ),
+			params)
+		)
+
+	# if the sample was partitioned (e.g. dadaF, derepF, etc. are lists,
+	# this will return a list instead of a data.frame. Bind elements of the
+	# list into a single data.frame , use dplyr::bind_rows because it's faster
+	# than do.call(rbind, ...)
+	if (!is.data.frame(mrgs) && is.list(mrgs)) {
+		mrgs <- dplyr::bind_rows(mrgs)
+	}
+	rm(drpF, drpR)
+	return(mrgs)
+})
+
+
+mergers_classes <- lapply(mergers,class)
+if (!all(mergers_classes == "data.frame")) {
+	print(mergers_classes)
+	if(any(mergers_classes) == "try-error") {
+		print(mergers[mergers_classes != "data.frame"])
+		stop()
+	}
+}
+
+message("Merged sequences from ",length(mergers)," samples.")
+# print(mergers)
+# print(length(mergers))
+names(mergers) <- derep_filenames$name
+
+
+out_path_mergers <- snakemake@output[["mergers"]]
+# message("Merges: ")
+# print(mergers)
+message("Saving merged sequences to ",out_path_mergers, " ...")
+saveRDS(mergers, out_path_mergers)
+message("Saved merged sequences.")
+
+message("")
+
+snakemake_log_end()

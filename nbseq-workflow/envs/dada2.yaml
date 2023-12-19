@@ -1,0 +1,12 @@
+# code/environments/exact/270c1d6d608fcc294d8576b354642db3_.yaml
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- r-matrix=1.3-2 # https://github.com/benjjneb/dada2/issues/212
+- bioconductor-dada2=1.16.0
+- r-tidyverse=1.3.2
+- r-ggplot2=3.3.6
+- bioconductor-rhdf5=2.34.0
+- pigz=2.6

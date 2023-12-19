@@ -1,0 +1,18 @@
+# code/environments/exact/cc085c6e7cf9387b6cc924cb88c5b0b9_.yaml
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- conda-forge::deicode=0.2.4
+- scikit-bio=0.5.8
+- unifrac=1.2
+- biom-format=2.1.14
+- biopython=1.80
+- joblib=1.2.0
+- scipy=1.10.0
+- pandas=1.5.2
+- openpyxl=3.0.10
+- anndata=0.8.0
+- scikit-learn=1.2.0
+- conda-forge::simplejson=3.18.1

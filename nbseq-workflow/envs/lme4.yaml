@@ -1,0 +1,14 @@
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- pandas
+- scipy
+- joblib
+- biom-format
+- anndata
+- r-tidyverse
+- r-lme4
+- r-lmerTest
+- pigz

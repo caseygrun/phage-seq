@@ -1,0 +1,185 @@
+snakemake@source('common.R')
+snakemake_log_start(snakemake)
+
+library(dada2)
+library(parallel)
+library(Matrix)
+
+snakemake_use_threads(snakemake)
+
+# MAKE FEATURE TABLE
+# ==================
+
+mergers <- readRDS(snakemake@input[["mergers"]])
+message("Filtering merged sequences...")
+
+# now filter out the rejects before making a sequence table
+# we gave a list of inputs, so mergers is a list of `data.frame`s, each of which
+# has a column $accept = TRUE for merged sequences DADA2 wants to keep
+mergers <- lapply(mergers, function(sample_mergers) {
+    return(sample_mergers[sample_mergers$accept, , drop = FALSE])
+})
+
+message("Identifying unique sequences...")
+
+# get a list of unique ASVs per sample, as well as a list of all unique ASVs
+# and their MD5 hashes
+# samples <- mergers
+unqs <- mclapply(mergers, getUniques)
+rm(mergers)
+gc()
+unqsqs <- unique(do.call(c, mclapply(unqs, names)))
+
+message("Hashing unique sequences...")
+unqsqs_to_hash <- unlist(
+    mclapply(unqsqs, digest::digest, algo="md5", serialize=FALSE))
+names(unqsqs_to_hash) <- unqsqs
+
+
+format_size <- function(x) {
+    return(format(structure(x, class="object_size"), units="auto"))
+}
+
+makeSequenceTableFast <- function(samples, unsqs, verbose=TRUE, parallel=TRUE) {
+    gc()
+    start_time <- proc.time()
+
+    # Samples are rows, columns are sequences
+    # dense matrix of samples x ASVs will be large:
+    if (verbose) cat("size feature table as dense matrix: ", format_size(4*length(samples)*length(unqsqs)), "\n")
+
+    # with a sparse matrix, we only need an entry for each non-zero element
+    n_entries <- sum(unlist(mclapply(samples, length)))
+    if (verbose) cat("expected size of feature table as sparse matrix (approx): ", format_size(4 * 3 * n_entries), "\n")
+
+    if (parallel) {
+        if (verbose) cat("using parallel processing... ")
+        rval <- makeSequenceTableSparseParallel(samples, unqsqs, verbose)
+    } else {
+        rval <- makeSequenceTableSparse(samples, unqsqs, n_entries = n_entries, verbose = verbose)
+    }
+    if (verbose) cat("\n","actual size of feature table as sparse matrix: ", format(object.size(rval),units='auto'),"\n", sep="")
+    dimnames(rval) <- list(
+        names(samples),
+        unsqs
+    )
+
+    if (verbose) cat("\n","final size of feature table with annotations: ", format(object.size(rval),units='auto'),"\n", sep="")
+    end_time <- proc.time()
+    if (verbose) {
+        cat("finished:\n")
+        print(end_time - start_time)
+    }
+
+    return(rval)
+}
+
+makeSequenceTableSparseParallel <- function(samples, unsqs, verbose=TRUE) {
+    message("Identifying index pairs per sample...")
+    indexes = seq_along(samples)
+    get_triples_per_sample <- function(i) {
+        j_s <- match(names(samples[[i]]), unqsqs)
+        sample_length <- length(j_s)
+        i_s <- rep(i, sample_length)
+        x_s <- samples[[i]]
+        return(list(i = i_s, j = j_s, x = x_s))
+    }
+    triples_per_sample <- mclapply(indexes, get_triples_per_sample)
+
+    n_retries <- 3
+    bad <- TRUE
+    while(n_retries > 0 && bad) {
+        out_classes <- lapply(triples_per_sample,class)
+        if (!all(out_classes == "list")) {
+            bad_indices <- (out_classes != "list")
+            error_indices <- (out_classes == "try-error")
+
+            message("Retrying ", sum(bad_indices), " samples which returned error in first pass. Will retry ", n_retries, " more times.")
+            indexes_retry <- which(bad_indices)
+
+            triples_per_sample_retry <- mclapply(indexes_retry, get_triples_per_sample)
+            triples_per_sample[bad_indices] <- triples_per_sample_retry
+            n_retries <- n_retries - 1
+        } else {
+            bad <- FALSE
+            message("All samples returned OK")
+        }
+    }
+    out_classes <- lapply(triples_per_sample,class)
+    if (!all(out_classes == "list")) {
+        bad_indices <- (out_classes != "list")
+        message("After all retry attempts, ", sum(bad_indices), " samples are still not correct.")
+    	if(any(out_classes == "try-error")) {
+    		print(as.character(triples_per_sample[out_classes == "try-error"]))
+    	} else {
+            message("Unexpected types:")
+            print(out_classes[bad_indices])
+            print(head(triples_per_sample[bad_indices]))
+        }
+        stop()
+    }
+
+    message("Merging pairs per sample into sparse matrix...")
+    triples <- do.call(mapply, c(c, triples_per_sample, SIMPLIFY=FALSE))
+    rval <- sparseMatrix(i = triples[['i']],
+                         j = triples[['j']],
+                         x = triples[['x']],
+                         index1 = TRUE,
+                         dims=c(length(samples),
+                                length(unqsqs))
+                         )
+    return(rval)
+}
+
+# obsolete alternative implementation
+makeSequenceTableSparse <- function(samples, unsqs, n_entries, verbose=TRUE) {
+
+    # establish sparse matrix triples
+    i_s <- numeric(n_entries) # index of sample
+    j_s <- numeric(n_entries) # index of ASV (in unqsqs)
+    x_s <- numeric(n_entries) # abundance of ASV in sample i,j
+
+    # index of next triple
+    entry <- 1
+
+    # for each sample
+    for(i in seq_along(samples)) {
+
+        # get ASVs in sample as indexes in unqsqs
+        sample_js <- match(names(samples[[i]]), unqsqs)
+
+        # figure out which triples the sample will occupy
+        sample_entry_start <- entry
+        sample_length <- length(sample_js)
+        sample_entry_end <- entry + sample_length - 1
+
+        # populate triples
+        i_s[sample_entry_start:sample_entry_end] <- i
+        j_s[sample_entry_start:sample_entry_end] <- sample_js
+        x_s[sample_entry_start:sample_entry_end] <- samples[[i]]
+
+        # incrememnt pointer
+        entry <- entry + sample_length
+
+        if (verbose) cat(names(samples)[[i]],", ")
+    }
+
+    rval <- sparseMatrix(i = i_s, j = j_s, x = x_s,
+                         index1 = TRUE,
+                         dims = c(length(samples),
+                                  length(unqsqs))
+                         )
+    return(rval)
+}
+
+message("Making feature table...")
+ft <- makeSequenceTableFast(unqs, unqsqs, parallel=TRUE)
+
+output_folder <- snakemake@output[["feature_table"]]
+message("Writing feature table to ", output_folder)
+
+# write feature table with colnames being hashes (ASVIDs)
+write_feature_table_sparse(ft, dir = output_folder,
+    features = unqsqs_to_hash)
+
+snakemake_log_end()
