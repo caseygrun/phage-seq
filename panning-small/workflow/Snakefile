@@ -1,0 +1,1106 @@
+# The main entry point of your workflow.
+# After configuring, running snakemake -n in a clone of this repository should successfully execute a dry-run of the workflow.
+
+
+# report: "report/workflow.rst"
+
+# Allow users to fix the underlying OS via singularity.
+# singularity: "docker://continuumio/miniconda3"
+
+from pathlib import Path
+import pandas as pd
+from scripts.common import *
+
+configfile: 'config/config.yaml'
+
+
+
+def get_library_params(library):
+	if library in config['libraries']:
+		return config['libraries'][library]
+	else:
+		raise Exception(f"Unknown library {library} (is it listed in config.yaml under `libraries`?)")
+
+def get_library_param(library, param):
+	return get_library_params(library)[param]
+
+def get_libraries():
+	return config['libraries'].keys()
+
+def get_sample_library_params(run, sample):
+	library = SAMPLES.loc[SAMPLES['guid'] == sample, 'phage_library'].iat[0].lower()
+	return get_library_params(library)
+
+def get_sample_library_param(run, sample, param):
+	return get_sample_library_params(run, sample)[param]
+
+def get_samples_per_run(run):
+	return SAMPLES.loc[SAMPLES['run_id'] == run,'guid']
+
+def get_runs():
+	return RUNS.ID.astype(str)
+
+def get_metadata_values(columns):
+	return SAMPLES.loc[:,columns].drop_duplicates()
+
+
+
+def list_to_regex(lst):
+	import re
+	return "(" + '|'.join(re.escape(str(l)) for l in lst) + ")"
+
+
+RUNS = pd.read_csv('config/runs.tsv', sep="\t")
+SAMPLES = expand_metadata_by_runs(pd.read_csv('config/samples.tsv', sep="\t"), RUNS)
+
+rule all:
+	input:
+		# feature tables
+		expand('results/tables/{space}/feature_table.biom',space=['aa','cdrs','cdr3']),
+		expand('results/tables/{space}/asvs.csv',space=['aa','cdrs','cdr3']),
+		expand('results/tables/aa/cdrs.csv'),
+		# expand('results/tables/{space}/cdrs.csv',space=['aa','cdrs','cdr3']),
+
+		# summaries
+		'results/tables/sample_summary_reads.txt',
+		'results/tables/sample_summary_features.txt',
+		'results/tables/summary_total_features.txt',
+
+
+		# transformations
+		expand('results/tables/{space}/transformed/{transform}/feature_table.biom', space=['aa','cdrs','cdr3'], transform=['log1p','sqrt']),
+
+		# diversity
+		# 'intermediate/aa/alpha_diversity.txt',
+		expand('results/tables/{space}/alpha_diversity.txt',        space=['aa','cdrs','cdr3']),
+		expand('intermediate/{space}/depth/sample_depth_stats.rds', space=['aa','cdrs','cdr3']),
+		expand('results/tables/{space}/beta/all/pcoa/{metric}.ordination.gz'          ,      space=['aa','cdrs','cdr3'], metric=['braycurtis','jaccard']),
+		expand('results/tables/{space}/beta/all/pcoa/{metric}-{library}.ordination.gz',      space=['aa','cdrs','cdr3'], metric=['braycurtis','jaccard'], library=get_libraries()),
+		expand('results/tables/{space}/beta/top_asvs/pcoa/{metric}-{library}.ordination.gz', space=['aa','cdrs','cdr3'], metric=['braycurtis','jaccard',
+			'weighted_unifrac',
+			'unweighted_unifrac'], library=get_libraries()),
+
+		expand('results/tables/{space}/beta/top_asvs/pcoa/{metric}-{library}.ordination.gz', space=['aa','cdrs','cdr3'], metric=[
+			'deicode'], library=['alpaca']),
+		#expand("intermediate/align/ASVs/{library}.bam", library=['alpaca','synthetic'])
+		# 'intermediate/denoise/pairs.rds'
+
+
+		# ordination
+		# ----------
+		# by experiment:
+		expand(
+			# perform two expansions: first get all valid combinations of `expt`
+			# and `phage_library`, so experiments with only only one library
+			# don't get represented twice;
+			#
+			# then get all combinations of {space}, {transform}, {method}
+			expand('intermediate/{{space}}/features/{expt}/{phage_library}/'
+					'transform/{{transform}}/ordination/{{method}}.ordination.gz',
+					zip,
+					# get all valid combinations of
+					**get_metadata_values(['expt','phage_library']).apply(lambda x: x.astype(str).str.lower())
+				),
+			space=['cdr3','aa'],
+			transform=['log1p'],
+			method=['TSVD','TSVD-TSNE'],
+		),
+
+		# synthetic is too big for TSVD
+		expand('intermediate/{space}/features/{partition}/{library}/transform/{transform}/ordination/{method}.ordination.gz',
+			space=['cdrs', 'aa'],partition=['all'],transform=['log1p','sqrt'],method=['TSVD','TSVD-TSNE'],library=['alpaca']),
+
+		expand('intermediate/{space}/features/{partition}/{library}/transform/{transform}/ordination/{method}.ordination.gz',
+			space=['cdr3'],partition=['all'],transform=['log1p','sqrt'],method=['TSVD','TSVD-TSNE'],library=['synthetic','alpaca'])
+
+
+rule guids:
+	input:
+		samples='config/samples.tsv',
+		runs='config/runs.tsv'
+	output: 'intermediate/guids.tsv'
+	run:
+		samples = read_delim_auto(input.samples)
+		runs = read_delim_auto(input.runs)
+		guids_to_samples(samples, runs).to_csv(output[0],index=False, sep="\t")
+
+rule augment_metadata:
+	input:
+		samples='config/samples.tsv',
+		metadata='config/metadata.csv'
+	output: 'config/metadata_full.tsv'
+	conda: 'envs/dada2.yaml'
+	script: 'scripts/augment_metadata.R'
+
+rule concat_sequences:
+	input: lambda wc: str(Path(config['raw_sequence_dir']) / wc.run / f"Sample_{guid_to_sample_run(wc.sample)['sample']}/")
+	output:
+		fwd='intermediate/{run}/concat/fwd/{sample}.fastq.gz',
+		rev='intermediate/{run}/concat/rev/{sample}.fastq.gz'
+	shell:"""
+	mkdir -p `dirname {output.fwd}`
+	# cat {input}/*_R1_*.fastq.gz > {output.fwd}
+	# cp {input}/*_R1_*.fastq.gz {output.fwd}
+	ln -sr {input}/*_R1_*.fastq.gz {output.fwd}
+
+	mkdir -p `dirname {output.rev}`
+	# cat {input}/*_R2_*.fastq.gz > {output.rev}
+	# cp {input}/*_R2_*.fastq.gz {output.rev}
+	ln -sr {input}/*_R2_*.fastq.gz {output.rev}
+	"""
+
+rule trim_primers:
+	group: 'trim_primers'
+	# input: #unpack(trim_primers_input)
+	# 	fwd='intermediate/partitioned/{sample}-R1-{partition}.fastq.gz',
+	# 	rev='intermediate/partitioned/{sample}-R2-{partition}.fastq.gz'
+	input: #unpack(trim_primers_input)
+		fwd='intermediate/{run}/concat/fwd/{sample}.fastq.gz',
+		rev='intermediate/{run}/concat/rev/{sample}.fastq.gz'
+	output:
+		fwd='intermediate/{run}/primers_trimmed/fwd/{sample}.fastq.gz',
+		rev='intermediate/{run}/primers_trimmed/rev/{sample}.fastq.gz',
+		info='intermediate/{run}/primers_trimmed/info/{sample}.txt'
+		# directory('intermediate/primers_trimmed/')
+	params:
+		primer_fwd=lambda wc: get_sample_library_param(wc.run, wc.sample, 'primer_fwd'),
+		primer_rev=lambda wc: get_sample_library_param(wc.run, wc.sample, 'primer_rev')
+	threads: 2
+	conda: 'envs/cutadapt.yaml'
+	shell: """
+	PATH_FWD={input.fwd:q}
+	PATH_REV={input.rev:q}
+	echo $PATH_FWD
+	echo $PATH_REV
+
+	# reads may be in one of two orientations due to library prep. try both
+	# and concat results
+	cutadapt -g {params.primer_fwd} -G {params.primer_rev} \
+		--cores={threads} \
+		--discard-untrimmed \
+		-o {output.fwd} -p {output.rev} \
+		$PATH_FWD $PATH_REV > "{output.info}"
+	"""
+
+rule summarize_trim_primers:
+	input: lambda wc: expand('intermediate/{run}/primers_trimmed/info/{sample}.txt', run=wc.run, sample=get_samples_per_run(wc.run))
+	output:
+		'intermediate/{run}/primers_trimmed/summary_reads.txt'
+	conda:
+		'envs/biopython-pysam.yaml'
+	script: 'scripts/summarize_trim_primers.py'
+
+# DENOISING
+# -----------------------------------------------------------------------------
+
+# filter and trim sequences from a sample using dada2; also plot the read quality
+rule filter_trim_sequences:
+	group: 'filter_trim_sequences'
+	input: #'intermediate/primers_trimmed/'
+		# unpack(input_filter_trim_sequences)
+		fwd = 'intermediate/{run}/primers_trimmed/fwd/{sample}.fastq.gz',
+		rev = 'intermediate/{run}/primers_trimmed/rev/{sample}.fastq.gz'
+	output: #directory('intermediate/filtered_trimmed/')
+		fwd     ='intermediate/{run}/filtered_trimmed/fwd/{sample}.fastq.gz',
+		rev     ='intermediate/{run}/filtered_trimmed/rev/{sample}.fastq.gz',
+		summary ='intermediate/{run}/filtered_trimmed/summary/{sample}.rds',
+		plot_fwd='results/plots/dada2/quality/{run}/fwd/{sample}.png',
+		plot_rev='results/plots/dada2/quality/{run}/rev/{sample}.png'
+	log: 'results/logs/{run}/filter_trim_sequences/{sample}.log'
+	threads: 2
+	conda:
+		'envs/dada2.yaml'
+	params:
+		maxEE     = 3,
+		truncQ    = 2,
+		minLen    = 100
+	script:
+		'scripts/filter_trim_sequences.R'
+
+# learn the forward and reverse error model using dada2
+def input_learn_error_model(wc):
+	return dict(
+		fwd=ancient(expand('intermediate/{run}/filtered_trimmed/fwd/{sample}.fastq.gz',run=wc.run, sample=get_samples_per_run(wc.run))),
+		rev=ancient(expand('intermediate/{run}/filtered_trimmed/rev/{sample}.fastq.gz',run=wc.run, sample=get_samples_per_run(wc.run)))
+	)
+
+rule learn_error_model:
+	input: unpack(input_learn_error_model)
+	output:
+		#'intermediate/error_model/error_model.rds' #directory('intermediate/error_model/')
+		error_fwd = 'intermediate/{run}/error_model/error_model_fwd.rds',
+		error_rev = 'intermediate/{run}/error_model/error_model_rev.rds',
+		plot_fwd  = 'results/plots/dada2/{run}_error-model-fwd.png',
+		plot_rev  = 'results/plots/dada2/{run}_error-model-rev.png'
+	conda:
+		'envs/dada2.yaml'
+	threads: workflow.cores
+	params:
+		nbases=100000000
+	log: "results/logs/{run}/learn_error_model.log"
+	script: 'scripts/learn_error_model.R'
+	# shell: "touch {output}"
+
+
+rule dereplicate_sequences:
+	input:
+		fwd = 'intermediate/{run}/filtered_trimmed/fwd/{sample}.fastq.gz',
+		rev = 'intermediate/{run}/filtered_trimmed/rev/{sample}.fastq.gz'
+	output:
+		fwd = 'intermediate/{run}/filtered_trimmed_dereplicated/fwd/{sample}.rds',
+		rev = 'intermediate/{run}/filtered_trimmed_dereplicated/rev/{sample}.rds'
+	conda:
+		'envs/dada2.yaml'
+	params:
+		max_partition_size=75000
+	log: "results/logs/{run}/dereplicate_sequences/{sample}.log"
+	# script: 'scripts/dereplicate_sequences.R'
+	script: 'scripts/dereplicate_sequences_partition.R'
+
+
+# def input_denoise_sequences(wc):
+# 	return dict(
+# 		error_fwd = expand('intermediate/{run}/error_model/error_model_fwd.rds',run=wc.run),
+# 		error_rev = expand('intermediate/{run}/error_model/error_model_rev.rds',run=wc.run),
+# 		dereps_fwd = expand('intermediate/{run}/filtered_trimmed_dereplicated/fwd/{sample}.rds',run=wc.run, sample=get_samples_per_run(wc.run)),
+# 		dereps_rev = expand('intermediate/{run}/filtered_trimmed_dereplicated/rev/{sample}.rds',run=wc.run, sample=get_samples_per_run(wc.run))
+# 	)
+#
+# rule denoise_sequences:
+# 	input: unpack(input_denoise_sequences)
+# 	output:
+# 		fwd = 'intermediate/{run}/denoise/fwd.rds',
+# 		rev = 'intermediate/{run}/denoise/rev.rds'
+# 	conda: 'envs/dada2.yaml'
+# 	threads: workflow.cores,
+# 	log: 'results/logs/{run}/denoise_sequences.log'
+# 	script: 'scripts/denoise_sequences.R'
+
+#
+# rule partition_sequences:
+# 	input:
+# 	output: 'intermediate/{run}/partitioned/{direction}'
+
+def input_denoise_sequences(wc):
+	return dict(
+		error = expand('intermediate/{run}/error_model/error_model_{direction}.rds',
+			run=wc.run, direction=wc.direction),
+		dereps = expand('intermediate/{run}/filtered_trimmed_dereplicated/{direction}/{sample}.rds',
+			run=wc.run, sample=get_samples_per_run(wc.run), direction=wc.direction)
+	)
+
+rule denoise_sequences:
+	wildcard_constraints:
+		direction=list_to_regex(['fwd', 'rev'])
+	input: unpack(input_denoise_sequences)
+	output:
+		'intermediate/{run}/denoise/{direction}.rds'
+	conda: 'envs/dada2.yaml'
+	# if more than 16 cores, use half; if less than 16, use all
+	threads: (workflow.cores//2 if (workflow.cores >= 16) else workflow.cores)
+	log: 'results/logs/{run}/denoise_sequences/{direction}.log'
+	script: 'scripts/denoise_sequences_partition.R'
+
+# def input_export_denoised_pairs(wc):
+# 	return dict(
+# 		dadas_fwd  = expand('intermediate/{run}/denoise/fwd.rds', run=wc.run),
+# 		dadas_rev  = expand('intermediate/{run}/denoise/rev.rds', run=wc.run),
+# 		dereps_fwd = expand('intermediate/{run}/filtered_trimmed_dereplicated/fwd/{sample}.rds',run=wc.run, sample=get_samples_per_run(wc.run)),
+# 		dereps_rev = expand('intermediate/{run}/filtered_trimmed_dereplicated/rev/{sample}.rds',run=wc.run, sample=get_samples_per_run(wc.run))
+# 	)
+def input_export_denoised_pairs(wc):
+	return dict(
+		# temporary hack
+		fwd = ancient(expand('intermediate/{run}/denoise/fwd.rds', run=wc.run)),
+		rev = ancient(expand('intermediate/{run}/denoise/rev.rds', run=wc.run)),
+
+		# dadas_fwd  = ancient(expand('intermediate/{run}/denoise/fwd/initial/{sample}.rds',              run=wc.run, sample=get_samples_per_run(wc.run))),
+		# dadas_rev  = ancient(expand('intermediate/{run}/denoise/rev/initial/{sample}.rds',              run=wc.run, sample=get_samples_per_run(wc.run))),
+		dereps_fwd = expand('intermediate/{run}/filtered_trimmed_dereplicated/fwd/{sample}.rds',run=wc.run, sample=get_samples_per_run(wc.run)),
+		dereps_rev = expand('intermediate/{run}/filtered_trimmed_dereplicated/rev/{sample}.rds',run=wc.run, sample=get_samples_per_run(wc.run))
+	)
+
+rule export_denoised_pairs:
+	input:
+		unpack(input_export_denoised_pairs)
+	output:
+		mergers = 'intermediate/{run}/denoise/pairs.rds'
+	log: 'results/logs/{run}/export_dadas_paired.log',
+	threads: workflow.cores,
+	conda: 'envs/dada2.yaml'
+	script: 'scripts/export_denoised_pairs.R'
+
+rule export_unique_pairs:
+	input:
+		mergers = ancient('intermediate/{run}/denoise/pairs.rds')
+	output:
+		unique_pairs = 'intermediate/{run}/denoise/unique_pairs.csv'
+	log: 'results/logs/{run}/export_unique_pairs.log'
+	threads: workflow.cores
+	conda: 'envs/dada2.yaml'
+	script: 'scripts/export_unique_pairs.R'
+
+rule export_feature_table_folder:
+	input:
+		mergers = ancient('intermediate/{run}/denoise/pairs.rds')
+	output:
+		feature_table = directory('intermediate/{run}/denoise/feature_table')
+	log: 'results/logs/{run}/export_feature_table.log'
+	threads: workflow.cores
+	conda: 'envs/dada2.yaml'
+	script: 'scripts/export_feature_table_folder.R'
+
+# todo: combine this with the R script above
+rule export_feature_table_folder_biom:
+	input: ancient('intermediate/{run}/denoise/feature_table')
+	output: 'intermediate/{run}/denoise/feature_table.biom'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/export_feature_table_folder_biom.py'
+
+# ASV FILTERING AND FEATURE TABLES
+# -----------------------------------------------------------------------------
+
+# TODO: implement
+rule filter_feature_table_nochimeras:
+	input:
+		feature_table = ancient('intermediate/{run}/denoise/feature_table.biom'),
+		unique_pairs = ancient('intermediate/{run}/denoise/unique_pairs.csv')
+	output:
+		feature_table = 'intermediate/{run}/nochimeras/feature_table.biom',
+		unique_pairs = 'intermediate/{run}/nochimeras/unique_pairs.csv',
+		chimeras = 'intermediate/{run}/nochimeras/chimeras.csv'
+	log: 'results/logs/{run}/filter_feature_table_nochimeras.log'
+	# threads: workflow.cores
+	conda: 'envs/mmseqs2-vsearch.yaml'
+	script: 'scripts/filter_feature_table_nochimeras.py'
+	# shell: """
+	# cp -r {input.feature_table} {output.feature_table}
+	# cp {input.unique_pairs} {output.unique_pairs}
+	# echo "ID,seq" > {output.chimeras}
+	# """
+
+
+def build_alignment_index_input(wildcards):
+	assert wildcards['library'] in config['libraries'], ("Reference sequence for "
+		f"{wildcards['library']} not found in configuration file. "
+		"Cannot build reference database to align nucleic acid ASVs.")
+	reference = config['libraries'][wildcards['library']]['reference']
+	return reference
+
+rule build_alignment_index:
+	wildcard_constraints:
+		library=list_to_regex(get_libraries())#"(" + "|".join(get_libraries()) + ")"
+	input: build_alignment_index_input
+	output:
+		dir = directory("resources/references/{library}/"),
+		fasta = 'resources/references/{library}/{library}.fasta'
+	conda: 'envs/bowtie2.yaml'
+	script: 'scripts/build_alignment_index.py'
+
+rule unique_pairs_csv_to_fasta:
+	input:
+		csv = '{base}.csv'
+	output:
+		fwd = '{base}_fwd.fasta',
+		rev = '{base}_rev.fasta'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/unique_pairs_csv_to_fasta.py'
+
+rule align_vhh_asv_pairs_na:
+	input: #unpack(align_vhh_asvs_nucleic_acid_input)
+		fwd = 'intermediate/{run}/nochimeras/unique_pairs_fwd.fasta',
+		rev = 'intermediate/{run}/nochimeras/unique_pairs_rev.fasta',
+		index = "resources/references/{library}/"
+	output:
+		coord_sorted = "intermediate/{run}/align/ASVs/{library}.bam",
+		name_sorted = "intermediate/{run}/align/ASVs/{library}-name-sorted.bam"
+	log: 'results/logs/{run}/align_vhh_asv_pairs_na/{library}.log'
+	params:
+		n_penalty = 0,
+		n_ceil = 64
+	threads: workflow.cores,
+	conda: 'envs/bowtie2.yaml'
+	script: 'scripts/align_vhh_asv_pairs_na.py'
+	# shell:
+	# 	"""
+	# 	mkdir -p $(dirname {log})
+	# 	{{
+	# 	# intermediate .sam and -unsorted.bam files will be produced before the
+	# 	# final .bam file. Put them in the same directory as the desired output
+	# 	# file.
+	# 	output_dir=$(dirname $(readlink -f {output.name_sorted:q}))
+	# 	mkdir -p $output_dir
+	# 	output_file_name_sorted=$(basename {output.name_sorted:q})
+	# 	output_file_coord_sorted=$(basename {output.coord_sorted:q})
+	#
+	# 	# get absolute path to the input FASTA files before we start changing
+	# 	# the directory
+	# 	seqs_fwd=$(readlink -f {input.fwd:q})
+	# 	seqs_rev=$(readlink -f {input.rev:q})
+	#
+	# 	# the index is a set of 6 files in a subdirectory of
+	# 	# `resources/references`, named according to the nanobody library.
+	# 	# `bowtie2` only looks in the current directory for this index, so we
+	# 	# go there first, then tell it with `-x $library` to look for files like
+	# 	# `{wildcards.library}..1.bt2`, etc.
+	# 	index={input.index:q}
+	# 	library={wildcards.library:q}
+	# 	cd "$index"
+	# 	>&2 pwd
+	#
+	# 	# perform alignment, compress to BAM file
+	# 	bowtie2 -x $library \
+	# 		-1 $seqs_fwd -2 $seqs_rev -f \
+	# 		--ff -I 0 -X 100 \
+	# 		--local --np {params.n_penalty} --n-ceil {params.n_ceil} \
+	# 		--threads {threads} \
+	# 	| samtools view -b -o "$output_dir/$library-unsorted.bam"
+	#
+	# 	# -S "$output_dir"/"$library.sam"
+	# 	# --no-discordant --no-mixed \
+	#
+	# 	# compress, to BAM files
+	# 	# samtools view "$output_dir/$library.sam" -b -o "$output_dir/$library-unsorted.bam"
+	#
+	# 	# sort by read name (rather than leftmost coordinates) so mate pairs appear consectuviely
+	# 	samtools sort -n "$output_dir/$library-unsorted.bam" -o "$output_dir/$output_file_name_sorted"
+	#
+	# 	# make a coordinate-sorted and indexed file for viewing
+	# 	samtools sort "$output_dir/$library-unsorted.bam" -o "$output_dir/$output_file_coord_sorted"
+	# 	samtools index "$output_dir/$output_file_coord_sorted"
+	# 	}} 1>{log} 2>{log}
+	# 	"""
+
+# use BAM alignment of ASV sequences to produce an implied full-length
+# reference sequence. ASVs are renamed according to read pairs
+rule merge_aligned_vhh_asv_pairs_na:
+	input:
+		alignment = 'intermediate/{run}/align/ASVs/{library}-name-sorted.bam',
+		reference = 'resources/references/{library}/{library}.fasta'
+		# 'results/tables/vhh_asvs_aligned.fasta'
+	output:
+		# 'results/tables/vhh_asvs_translated.fasta'
+		'intermediate/{run}/merge/{library}_merged_reads.csv.gz',
+	log: 'results/logs/{run}/merge_aligned_vhh_asv_pairs_na/{library}.log'
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/merge_aligned_vhh_asv_pairs_na.py'
+
+# perform zero-width greedy OTU clustering
+rule cluster_aligned_vhh_asv_pairs_na:
+	input: 'intermediate/{run}/merge/{library}_merged_reads.csv.gz'
+	output:
+		clusters = 'intermediate/{run}/merge/{library}_clusters_na.csv',
+		na = 'intermediate/{run}/merge/{library}_na.csv',
+	threads: workflow.cores,
+	log: 'results/logs/{run}/cluster_aligned_vhh_asv_pairs_na/{library}.log'
+	conda: 'envs/mmseqs2-vsearch.yaml'
+	script: 'scripts/cluster_aligned_vhh_asv_pairs_na.py'
+
+# collapse feature table columns according to complete nucleic acid ASVs. reads
+# which did not map to the reference will be removed.
+rule collapse_feature_table_aligned_na:
+	input:
+		feature_table = 'intermediate/{run}/nochimeras/feature_table.biom',
+		aligned_asvs = expand('intermediate/{{run}}/merge/{library}_na.csv', library=get_libraries()) #'results/tables/vhh_asvs.csv'
+	output:
+		feature_table = 'intermediate/{run}/align/feature_table.biom'
+		# , summary = 'intermediate/{run}/align/summary_reads.txt'
+	log: 'results/logs/{run}/filter_feature_table_aligned.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/collapse_feature_table_aligned_na.py'
+
+# translate ASVs to amino acid ASVs
+rule translate_merged_aligned_vhh_asv_pairs:
+	input:
+		na = 'intermediate/{run}/merge/{library}_na.csv',
+		reference = 'resources/references/{library}/{library}.fasta'
+	output:
+		# ASVID (hash of nucleic acid sequence), aaSVID (hash of ungapped amino acid sequence)
+		na_to_aa = 'intermediate/{run}/aa/{library}_na_to_aa.csv',
+
+		# aaSVID, translated = amino acid sequence
+		aa = 'intermediate/{run}/aa/{library}_pairs_aa.csv'
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	threads: 4
+	log: 'results/logs/{run}/translate_merged_aligned_vhh_asv_pairs/{library}.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/translate_merged_aligned_vhh_asv_pairs.py'
+
+# converts the nucleic acid ASV feature table to an amino acid ASV (aaSV)
+# feature table
+rule collapse_feature_table_aa_unfiltered:
+	input:
+		feature_table = 'intermediate/{run}/align/feature_table.biom',
+		mapping = expand('intermediate/{{run}}/aa/{library}_na_to_aa.csv',library=get_libraries())
+	output:
+		feature_table = 'intermediate/{run}/aa/feature_table.biom'
+	log: 'results/logs/{run}/collapse_feature_table_aa_unfiltered.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/collapse_feature_table_aa.py'
+
+# perform greedy zero-width OTU clustering on AA ASVs
+rule cluster_vhh_asv_pairs_aa:
+	input: 'intermediate/{run}/aa/{library}_pairs_aa.csv'
+	output:
+		clusters = 'intermediate/{run}/aa_cluster/{library}_clusters_aa.csv',
+		aa = 'intermediate/{run}/aa_cluster/{library}_aa_clustered.csv',
+	threads: workflow.cores,
+	log: 'results/logs/{run}/cluster_vhh_asv_pairs_aa/{library}.log'
+	conda: 'envs/mmseqs2-vsearch.yaml'
+	script: 'scripts/cluster_vhh_asv_pairs_aa.py'
+
+# in case the same ASV is assigned to two different clusters in the alpaca and
+# synthetic library, break the tie
+rule resolve_aa_clusters:
+	input: expand('intermediate/{{run}}/aa_cluster/{library}_clusters_aa.csv',library=get_libraries())
+	output: 'intermediate/{run}/aa_cluster/clusters_aa.csv'
+	log: 'results/logs/{run}/resolve_aa_clusters.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/resolve_clusters.py'
+
+# group the feature table according to AA clustering
+rule collapse_feature_table_aa_clusters:
+	input:
+		feature_table = 'intermediate/{run}/aa/feature_table.biom',
+		mapping = 'intermediate/{run}/aa_cluster/clusters_aa.csv' #expand('intermediate/{{run}}/aa_cluster/{library}_clusters_aa.csv',library=get_libraries())
+	output:
+		feature_table = 'intermediate/{run}/aa_cluster/feature_table.biom'
+	conda: 'envs/biopython-pysam.yaml'
+	log: 'results/logs/{run}/collapse_feature_table_aa_clusters.log'
+	script: 'scripts/collapse_feature_table_aa.py'
+
+# align AA ASV sequences to the AA reference, so can extract CDRs and check
+# lengths
+rule align_vhh_asvs_aa:
+	input:
+		translation = 'intermediate/{run}/aa_cluster/{library}_aa_clustered.csv',
+		reference = 'resources/references/{library}/{library}.fasta'
+	output: 'intermediate/{run}/aa_align/{library}_aa_aligned.csv',
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	log: 'results/logs/{run}/align_vhh_asvs_aa/{library}.log'
+	threads: workflow.cores
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/align_vhh_asvs_aa.py'
+
+# extract CDRs to use in filtering
+rule extract_cdrs_library:
+	input: 'intermediate/{run}/aa_align/{library}_aa_aligned.csv'
+	output: 'intermediate/{run}/aa_align/{library}_aa_cdrs.csv'
+	conda: 'envs/biopython-pysam.yaml',
+	params:
+		CDRs=lambda wc: get_library_param(wc.library, 'CDRs')
+	script: 'scripts/extract_cdrs_library.py'
+
+# filter aaSVs according to critera, e.g. total lengh, length of CDRs, etc.
+rule filter_vhh_asvs_aa:
+	input:
+		aa = 'intermediate/{run}/aa_align/{library}_aa_aligned.csv',
+		cdrs = 'intermediate/{run}/aa_align/{library}_aa_cdrs.csv'
+	output:
+		aa = 'intermediate/{run}/aa_filter/{library}_aa.csv',
+		cdrs = 'intermediate/{run}/aa_filter/{library}_aa_cdrs.csv',
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/filter_vhh_asvs_aa.py'
+
+def input_concat_cdrs(wc):
+	return {
+		library: expand('intermediate/{run}/aa_filter/{library}_aa_cdrs.csv',
+			library=library, run=wc.run)
+		for library in get_libraries()
+	}
+
+rule concat_cdrs:
+	#expand('intermediate/{run}/aa_filter/{library}_aa_cdrs.csv', library=get_libraries())
+	input: unpack(input_concat_cdrs)
+	output: 'intermediate/{run}/aa_filter/aa_cdrs.csv'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/concat_asvs.py'
+
+# filters feature table to remove AAs filtered on basis of length, CDRs, etc.
+rule collapse_feature_table_aa_filtered:
+	input:
+		feature_table = 'intermediate/{run}/aa_cluster/feature_table.biom',
+		features = expand('intermediate/{{run}}/aa_filter/{library}_aa.csv',library=get_libraries()),
+	output:
+		feature_table = 'intermediate/{run}/aa_filter/feature_table.biom'
+	log: 'results/logs/{run}/collapse_feature_table_aa_filtered.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/collapse_feature_table_aa.py'
+
+rule collapse_feature_table_clonotype:
+	input:
+		feature_table = 'intermediate/{run}/aa_filter/feature_table.biom',
+		mapping =       'intermediate/{run}/aa_filter/aa_cdrs.csv'
+	output:
+		feature_table = 'intermediate/{run}/cdrs/feature_table.biom'
+	params:
+		mapping_cols=['aaSVID','clonotypeID']
+	log: 'results/logs/{run}/collapse_feature_table_clonotype.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/collapse_feature_table_aa.py'
+
+use rule collapse_feature_table_clonotype as collapse_feature_table_cdr3 with:
+	output:
+		feature_table = 'intermediate/{run}/cdr3/feature_table.biom'
+	params:
+		mapping_cols=['aaSVID','CDR3ID']
+	log: 'results/logs/{run}/collapse_feature_table_cdr3.log'
+
+
+rule concat_feature_tables:
+	input: expand('intermediate/{run}/aa_filter/feature_table.biom', run=get_runs())
+	output: 'intermediate/aa/feature_table.biom'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/concat_feature_tables.py'
+
+rule sum_feature_table_runs:
+	input:
+		feature_table='intermediate/aa/feature_table.biom',
+		mapping='intermediate/guids.tsv'
+	output: 'results/tables/aa/feature_table.biom'
+	params:
+		mapping_cols=['guid','ID'],
+		axis='sample'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/collapse_feature_table_aa.py'
+
+def input_concat_asvs(wc):
+	return { library: expand(
+		'intermediate/{run}/aa_filter/{library}_aa.csv',
+			library=library, run=get_runs())
+		for library in get_libraries() }
+
+rule concat_asvs_aa:
+	input: unpack(input_concat_asvs)
+	output: 'results/tables/aa/asvs.csv'
+	threads: workflow.cores/2
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/concat_asvs.py'
+
+
+rule transform_feature_table:
+	wildcard_constraints:
+		transform=list_to_regex(['log1p','sqrt'])
+	input: 'results/tables/{space}/feature_table.biom'
+	output: 'results/tables/{space}/transformed/{transform}/feature_table.biom'
+	conda: 'envs/biopython-pysam.yaml',
+	script: 'scripts/transform_ft.py'
+
+rule transform_feature_table_library:
+	wildcard_constraints:
+		transform=list_to_regex(['log1p','sqrt'])
+	input: 'intermediate/{space}/features/{partition}/{library}/feature_table.biom'
+	output: 'intermediate/{space}/features/{partition}/{library}/transform/{transform}/feature_table.biom'
+	conda: 'envs/biopython-pysam.yaml',
+	script: 'scripts/transform_ft.py'
+
+
+# rule transform_feature_table_library:
+# 	input: 'intermediate/{space}/features/{partition}/{library}/feature_table.biom'
+# 	output: 'intermediate/{space}/features/{partition}/{library}/transformed/{transform}/feature_table.biom'
+# 	conda: 'envs/biopython-pysam.yaml',
+# 	script: 'scripts/transform_ft.py'
+
+rule extract_cdrs:
+	input: 'results/tables/aa/asvs.csv'
+	output: 'results/tables/aa/cdrs.csv'
+	conda: 'envs/biopython-pysam.yaml',
+	params:
+		library_CDRs = {library: get_library_param(library, 'CDRs') for library in get_libraries() }
+	script: 'scripts/extract_cdrs.py'
+
+
+rule cdrs_to_sqlite:
+	input:
+		cdrs='results/tables/aa/cdrs.csv',
+		aa='results/tables/aa/asvs.csv'
+	output: 'intermediate/aa/asvs.db'
+	conda: 'envs/biopython-pysam.yaml'
+	# quote the heredoc delimiter, e.g. <<"EOF" instead of <<EOF to prevent the
+	# shell from trying to quote-expand the backticked SQL statements
+	shell: """sqlite3 {output} <<"EOF"
+.mode csv
+.import {input.cdrs} cdrs
+.import {input.aa} aa
+CREATE INDEX cdrs_CDR3ID ON `cdrs` (`CDR3ID` COLLATE NOCASE);
+CREATE UNIQUE INDEX cdrs_aaSVID ON `cdrs` (`aaSVID` COLLATE NOCASE);
+CREATE UNIQUE INDEX aa_aaSVID ON `aa` (`aaSVID` COLLATE NOCASE);
+CREATE INDEX aa_aaSVID_aligned ON `aa`(`aaSVID`, `aligned`);
+CREATE INDEX aa_library_aaSVID_aligned ON `aa`(`library`, `aaSVID`, `aligned`);
+EOF
+	"""
+
+rule link_asvs_for_mmseqs2:
+	input: 'results/tables/{space}/asvs.csv'
+	output: 'intermediate/{space}/asvs.csv'
+	shell: """
+	cp "{input}" "{output}"
+	"""
+
+rule asvs_to_mmseqs2db:
+	input: 'intermediate/{space}/asvs.fasta'
+	output: directory('intermediate/{space}/features_db')
+	conda: 'envs/mmseqs2-vsearch.yaml'
+	shell: """
+	rm -r -f {output}
+	mkdir -p {output}
+	mmseqs createdb {input} {output}/features
+	mmseqs createindex {output}/features {config[scratch]}
+	"""
+
+use rule collapse_feature_table_clonotype as collapse_feature_table_clonotype_all with:
+	input:
+		feature_table = 'results/tables/aa/feature_table.biom',
+		mapping =       'results/tables/aa/cdrs.csv'
+	output:
+		feature_table = 'results/tables/cdrs/feature_table.biom'
+	params:
+		mapping_cols=['aaSVID','clonotypeID']
+	log: 'results/logs/collapse_feature_table_clonotype.log'
+
+	threads: workflow.cores//2
+
+use rule collapse_feature_table_clonotype_all as collapse_feature_table_cdr3_all with:
+	output:
+		feature_table = 'results/tables/cdr3/feature_table.biom'
+	params:
+		mapping_cols=['aaSVID','CDR3ID']
+	log: 'results/logs/collapse_feature_table_cdr3.log'
+
+rule copy_cdrs_clonotype:
+	input: 'results/tables/aa/cdrs.csv'
+	output: 'results/tables/{space}/asvs.csv'
+	threads: workflow.cores//2
+	script: 'scripts/copy_cdrs_clonotype.py'
+
+# SUMMARIZE
+# ---------
+
+# rule summarize_dereps:
+# 	input: lambda wc: expand('intermediate/{{run}}/filtered_trimmed_dereplicated/fwd/{sample}.rds',sample = get_samples_per_run(wc.run))
+# 	output: 'intermediate/{run}/filtered_trimmed_dereplicated/summary_features.txt'
+# 	conda: 'envs/dada2.yaml'
+# 	script: 'scripts/summarize_dereps.R'
+#
+# def input_summarize_filter(wc):
+# 	return {
+# 		'filter_summaries': expand(
+# 			'intermediate/{{run}}/filtered_trimmed/summary/{sample}.rds',
+# 			sample = get_samples_per_run(wc.run)
+# 		)
+# 	}
+# rule summarize_filter:
+# 	input: unpack(input_summarize_filter)
+# 	output:
+# 		summary_filter = 'intermediate/{run}/filtered_trimmed/summary_reads.txt',
+# 	conda: 'envs/dada2.yaml'
+# 	script: 'scripts/summarize_filter.R'
+
+
+rule summarize_feature_table:
+	wildcard_constraints:
+		kind=list_to_regex(['denoise', 'align', 'nochimeras', 'aa', 'aa_cluster', 'aa_filter', 'cdrs', 'cdr3']),
+		run=list_to_regex(get_runs())
+	input:
+		feature_table = 'intermediate/{run}/{kind}/feature_table.biom'
+	output:
+		reads = 'intermediate/{run}/{kind}/summary_reads.txt',
+		features = 'intermediate/{run}/{kind}/summary_features.txt',
+		total_features = 'intermediate/{run}/{kind}/summary_total_features.txt'
+	params:
+		header=lambda wc: wc.kind,
+		total_row=lambda wc: wc.run
+	log: 'results/logs/{run}/{kind}_summarize_feature_table.log'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/summarize_feature_table.py'
+
+
+rule summarize_samples_reads:
+	wildcard_constraints:
+		run=list_to_regex(get_runs())
+	input:
+		primers_trimmed = ancient('intermediate/{run}/primers_trimmed/summary_reads.txt'),
+		filtered = ancient('intermediate/{run}/filtered_trimmed/summary_reads.txt'),
+		denoised = ancient('intermediate/{run}/denoise/summary_reads.txt'),
+		aligned = 'intermediate/{run}/align/summary_reads.txt',
+		nochimeras = 'intermediate/{run}/nochimeras/summary_reads.txt',
+		aa = 'intermediate/{run}/aa/summary_reads.txt',
+		aa_clustered = 'intermediate/{run}/aa_cluster/summary_reads.txt',
+		aa_filtered = 'intermediate/{run}/aa_filter/summary_reads.txt'
+	output:
+		summary = 'intermediate/{run}/sample_summary_reads.txt'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/summarize_samples.py'
+
+rule summarize_samples_features:
+	wildcard_constraints:
+		run=list_to_regex(get_runs())
+	input:
+		derep = ancient('intermediate/{run}/filtered_trimmed_dereplicated/summary_features.txt'),
+		denoised = ancient('intermediate/{run}/denoise/summary_features.txt'),
+		aligned = 'intermediate/{run}/align/summary_features.txt',
+		nochimeras = 'intermediate/{run}/nochimeras/summary_features.txt',
+		aa = 'intermediate/{run}/aa/summary_features.txt',
+		aa_clustered = 'intermediate/{run}/aa_cluster/summary_features.txt',
+		aa_filtered = 'intermediate/{run}/aa_filter/summary_features.txt',
+		cdrs = 'intermediate/{run}/cdrs/summary_features.txt',
+		cdr3 = 'intermediate/{run}/cdr3/summary_features.txt'
+	output:
+		summary = 'intermediate/{run}/sample_summary_features.txt'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/summarize_samples.py'
+
+rule summarize_total_features_run:
+	wildcard_constraints:
+		run=list_to_regex(get_runs())
+	input:
+		# derep = 'intermediate/{run}/filtered_trimmed_dereplicated/summary_total_features.txt',
+		denoise     = ancient('intermediate/{run}/denoise/summary_total_features.txt'),
+		align       = 'intermediate/{run}/align/summary_total_features.txt',
+		nochimeras  = 'intermediate/{run}/nochimeras/summary_total_features.txt',
+		aa          = 'intermediate/{run}/aa/summary_total_features.txt',
+		aa_cluster  = 'intermediate/{run}/aa_cluster/summary_total_features.txt',
+		aa_filter   = 'intermediate/{run}/aa_filter/summary_total_features.txt',
+		cdrs        = 'intermediate/{run}/cdrs/summary_total_features.txt',
+		cdr3        = 'intermediate/{run}/cdr3/summary_total_features.txt'
+	output:
+		summary = 'intermediate/{run}/summary_total_features.txt'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/summarize_total_features_run.py'
+
+rule summarize_total_features:
+	input:
+		# derep = 'intermediate/{run}/filtered_trimmed_dereplicated/summary_total_features.txt',
+		denoise      = ancient(expand('intermediate/{run}/denoise/feature_table.biom'    , run = get_runs())) ,
+		align        = expand('intermediate/{run}/align/feature_table.biom'      , run = get_runs()) ,
+		nochimeras   = expand('intermediate/{run}/nochimeras/feature_table.biom' , run = get_runs()) ,
+		aa           = expand('intermediate/{run}/aa/feature_table.biom'         , run = get_runs()) ,
+		aa_cluster   = expand('intermediate/{run}/aa_cluster/feature_table.biom' , run = get_runs()) ,
+		aa_filter    = expand('intermediate/{run}/aa_filter/feature_table.biom'  , run = get_runs()) ,
+		cdrs         = expand('intermediate/{run}/cdrs/feature_table.biom'       , run = get_runs()) ,
+		cdr3         = expand('intermediate/{run}/cdr3/feature_table.biom'       , run = get_runs()) ,
+	output:
+		summary = 'intermediate/summary_total_features.txt'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/summarize_total_features.py'
+
+rule concat_sample_summaries:
+	wildcard_constraints:
+		kind=list_to_regex(['reads','features'])
+	input: ancient(expand('intermediate/{run}/sample_summary_{{kind}}.txt', run=get_runs()))
+	output: 'results/tables/sample_summary_{kind}.txt'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/concat_sample_summaries.py'
+
+rule concat_summaries_total_features:
+	input: (expand('intermediate/{run}/summary_total_features.txt', run=get_runs()) + ['intermediate/summary_total_features.txt'])
+	output: 'results/tables/summary_total_features.txt'
+	params:
+		row='run_id'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/concat_sample_summaries.py'
+
+
+
+# ALPHA DIVERSITY
+# ---------------
+
+rule alpha_diversity:
+	input:
+		feature_table='results/tables/{space}/feature_table.biom'
+		# feature_table='intermediate/features/top_asvs/feature_table.biom
+	output:
+		alpha_diversity='results/tables/{space}/alpha_diversity.txt'
+	conda: 'envs/breakaway.yaml',
+	threads: workflow.cores
+	log: 'results/logs/{space}/alpha_diversity.log'
+	script: 'scripts/diversity.R'
+
+
+rule alpha_diversity_run:
+	input:
+		feature_table='intermediate/aa/feature_table.biom'
+	output:
+		alpha_diversity='intermediate/aa/alpha_diversity.txt'
+	conda: 'envs/breakaway.yaml',
+	threads: workflow.cores
+	log: 'results/logs/aa/alpha_diversity_run.log'
+	script: 'scripts/diversity.R'
+
+rule depth_stats:
+	input: 'results/tables/{space}/feature_table.biom'
+	output: 'intermediate/{space}/depth/sample_depth_stats.rds'
+	conda: 'envs/breakaway.yaml'
+	threads: workflow.cores
+	script: 'scripts/depth_stats.R'
+
+
+# BETA DIVERSITY
+# --------------
+
+ruleorder: filter_features_abundance_prevalence > features_all > filter_feature_table_by_library > filter_feature_table_by_expt > link_asvs_for_mmseqs2
+
+rule filter_features_abundance_prevalence:
+	input:
+		feature_table='results/tables/{space}/feature_table.biom',
+		feature_data='results/tables/{space}/asvs.csv'
+	output:
+		feature_table='intermediate/{space}/features/top_asvs/feature_table.biom',
+		feature_data= 'intermediate/{space}/features/top_asvs/asvs.csv'
+	params:
+		min_abundance=10,
+		min_prevalence=2
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/filter_features_abundance_prevalence.py'
+
+rule features_all:
+	input:
+		feature_table='results/tables/{space}/feature_table.biom',
+		feature_data= 'results/tables/{space}/asvs.csv'
+	output:
+		feature_table='intermediate/{space}/features/all/feature_table.biom',
+		feature_data= 'intermediate/{space}/features/all/asvs.csv'
+	shell:"""
+	ln -sr {input.feature_table} {output.feature_table}
+	ln -sr {input.feature_data} {output.feature_data}
+	"""
+
+rule filter_feature_table_by_expt:
+	wildcard_constraints:
+		expt=r'[^/]+'
+	input:
+		feature_table = 'intermediate/{space}/features/all/feature_table.biom',
+		feature_data  = 'intermediate/{space}/features/all/asvs.csv',
+		metadata      = 'config/samples.tsv'
+	output:
+		feature_table = 'intermediate/{space}/features/{expt}/feature_table.biom',
+		feature_data =  'intermediate/{space}/features/{expt}/asvs.csv'
+	params:
+		param='expt'
+	threads: workflow.cores
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/filter_feature_table_by_metadata.py'
+
+
+rule filter_feature_table_by_library:
+	wildcard_constraints:
+		partition=r'[^/]+',
+		library=list_to_regex(get_libraries())
+	input:
+		feature_table = 'intermediate/{space}/features/{partition}/feature_table.biom',
+		feature_data =  'intermediate/{space}/features/{partition}/asvs.csv'
+	output:
+		feature_table = 'intermediate/{space}/features/{partition}/{library}/feature_table.biom',
+		feature_data =  'intermediate/{space}/features/{partition}/{library}/asvs.csv'
+	threads: workflow.cores
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/filter_feature_table_by_library.py'
+
+
+rule asvs_csv_to_fasta:
+	input:  'intermediate/{subdirs}/asvs.csv'
+	output: 'intermediate/{subdirs}/asvs.fasta'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/csv_to_fasta.py'
+
+# rule asvs_csv_to_fasta:
+# 	input:  'intermediate/{space}/features/{partition}/{library}/asvs.csv'
+# 	output: 'intermediate/{space}/features/{partition}/{library}/asvs.fasta'
+# 	conda: 'envs/biopython-pysam.yaml'
+# 	script: 'scripts/csv_to_fasta.py'
+#
+# rule asvs_csv_to_fasta2:
+# 	wildcard_constraints:
+# 		space=list_to_regex(['na','aa','cdrs','cdr3'])
+# 	input:  'results/tables/{space}/asvs.csv'
+# 	output: 'intermediate/{space}/asvs.fasta'
+# 	conda: 'envs/biopython-pysam.yaml'
+# 	script: 'scripts/csv_to_fasta.py'
+
+rule fasttree_asvs:
+	input:  'intermediate/{space}/features/top_asvs/{library}/asvs.fasta'
+	output: 'intermediate/{space}/features/top_asvs/{library}/asvs.nwk'
+	log:    'results/logs/{space}/features/top_asvs/{library}/fasttree_asvs.log'
+	conda: 'envs/msa.yaml'
+	threads: 4,
+	shell: """
+	{{
+	OMP_NUM_THREADS={threads}
+	FastTreeMP < {input} > {output}
+	}} >{log} 2>&1
+	"""
+
+rule beta_diversity_distance:
+	wildcard_constraints:
+		metric=list_to_regex(['braycurtis','jaccard','shared_reads'])
+	input:
+		feature_table='intermediate/{space}/features/{partition}/feature_table.biom',
+		metadata='config/samples.tsv'
+	output: 'results/tables/{space}/beta/{partition}/distance/{metric}.tsv'
+	params:
+		min_asv_abundance = 10
+	threads: workflow.cores,
+	conda: 'envs/beta-diversity.yaml'
+	script: 'scripts/beta_diversity.py'
+
+rule beta_diversity_distance_library:
+	wildcard_constraints:
+		metric=list_to_regex(['braycurtis','jaccard','shared_reads'])
+	input:
+		feature_table = 'intermediate/{space}/features/{partition}/{library}/feature_table.biom',
+		metadata='config/samples.tsv'
+	output:  'results/tables/{space}/beta/{partition}/distance/{metric}-{library}.tsv'
+	conda: 'envs/beta-diversity.yaml'
+	threads: workflow.cores
+	script: 'scripts/beta_diversity.py'
+
+rule beta_diversity_distance_phylogetic:
+	wildcard_constraints:
+		metric=list_to_regex(['weighted_unifrac','unweighted_unifrac'])
+	input:
+		feature_table='intermediate/{space}/features/top_asvs/{library}/feature_table.biom',
+		phylogeny=    'intermediate/{space}/features/top_asvs/{library}/asvs.nwk'
+	output: 'results/tables/{space}/beta/top_asvs/distance/{metric}-{library}.tsv'
+	conda: 'envs/beta-diversity.yaml'
+	threads: workflow.cores
+	script: 'scripts/beta_diversity_distance_phylogetic.py'
+
+ruleorder: beta_diversity_rpcoa > beta_diversity_pcoa
+
+rule beta_diversity_pcoa:
+	input:
+		distance_matrix='results/tables/{space}/beta/{partition}/distance/{metric}.tsv'
+	output:
+		pcoa='results/tables/{space}/beta/{partition}/pcoa/{metric}.ordination.gz'
+		# ,biplot='results/tables/beta/pcoa/{metric}-biplot.ordination'
+	conda: 'envs/beta-diversity.yaml'
+	script: 'scripts/beta_diversity_pcoa.py'
+
+rule beta_diversity_rpcoa:
+	wildcard_constraints:
+		metric=list_to_regex(['deicode'])
+	input:
+		feature_table='intermediate/{space}/features/top_asvs/{library}/feature_table.biom'
+	output:
+		distance_matrix='results/tables/{space}/beta/top_asvs/distance/{metric}-{library}.tsv',
+		pcoa=           'results/tables/{space}/beta/top_asvs/pcoa/{metric}-{library}.ordination.gz'
+		# ,biplot='results/tables/beta/pcoa/{metric}-biplot.ordination'
+	threads: workflow.cores
+	conda: 'envs/beta-diversity.yaml'
+	script: 'scripts/beta_diversity_rpcoa.py'
+
+
+rule ordination:
+	input: 'intermediate/{space}/features/{partition}/{library}/transform/{transform}/feature_table.biom'
+	output:
+		skbio='intermediate/{space}/features/{partition}/{library}/transform/{transform}/ordination/{method}.ordination.gz',
+		sklearn='intermediate/{space}/features/{partition}/{library}/transform/{transform}/ordination/{method}.pickle'
+	conda: 'envs/beta-diversity.yaml'
+	threads: workflow.cores//2
+	script: 'scripts/ordinate.py'

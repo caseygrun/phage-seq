@@ -1,0 +1,69 @@
+# This file should contain everything to configure the workflow on a global scale.
+# In case of sample based data, it should be complemented by a samples.tsv file that contains
+# one row per sample. It can be parsed easily via pandas.
+# samples: "config/samples.tsv"
+
+# relative to the working directory
+# This file should contain everything to configure the workflow on a global scale.
+# In case of sample based data, it should be complemented by a samples.tsv file that contains
+# one row per sample. It can be parsed easily via pandas.
+# samples: "config/samples.tsv"
+
+# relative to the working directory
+raw_sequence_dir: '../input'
+scratch: '~/scratch60'
+libraries:
+    alpaca:
+        # >VHF5R1b|VHH-fw-5
+        # tcgtcggcagcgtcagatgtgtataagagacagTCCTGTGCAGCCTC
+        # >VHR6R2b|VHH-rv-6
+        # gtctcgtgggctcggagatgtgtataagagacagACCTGGGTCCCCTG
+        primer_fwd: "tcgtcggcagcgtcagatgtgtataagagacagTCCTGTGCAGCCTC"
+        primer_rev: "gtctcgtgggctcggagatgtgtataagagacagACCTGGGTCCCCTG"
+
+        reference: 'resources/references/2022-12-05_pD-VHH-2022b.fasta'
+        # starting reference frame for the reference sequence
+        reference_frame_start_nt: 21
+        reference_length_aa: 150
+        # 3' end of fwd read must align to this NA position or later
+        min_fwd_end: 188
+        # 3' end of rev read must align to this NA position or earlier
+        max_rev_start: 294
+        # sum(FR2 = 17 aa; FR3 = 37 aa; min(CDR1 + CDR2 + CDR3) = 15) = 69
+        min_aa_length: 69
+        min_CDR_length:
+            CDR1: 4
+            CDR2: 6
+            CDR3: 5
+            FR4:  2
+        CDRs:
+            FR1:  [0,  21]
+            CDR1: [21, 29]
+            FR2:  [29, 46]
+            CDR2: [46, 54]
+            FR3:  [54, 92]
+            CDR3: [92, 116]
+            FR4:  [116,127]
+
+    synthetic:
+        # >FL9R1b
+        # tcgtcggcagcgtcagatgtgtataagagacagAGCTGCGCGGCGAGC
+        # >FL3bR2b
+        # gtctcgtgggctcggagatgtgtataagagacagGTATGGGTAAGAACCACCGCT
+        primer_fwd: "tcgtcggcagcgtcagatgtgtataagagacagAGCTGCGCGGCGAGC"
+        primer_rev: "gtctcgtgggctcggagatgtgtataagagacagGTATGGGTAAGAACCACCGCT"
+
+        reference: 'resources/references/2020-03-26_Feimei-Liu_pLibF_nanobody_display_CDR3_18aa.fasta'
+        reference_frame_start_nt: 953
+        reference_length_aa: 100
+        min_fwd_end: 1049
+        max_rev_start: 1164
+        min_aa_length: 80
+        min_CDR_length:
+            CDR1: 4
+            CDR2: 4
+            CDR3: 8
+        CDRs:
+            CDR1: [0, 6]
+            CDR2: [23, 29]
+            CDR3: [70, 87]

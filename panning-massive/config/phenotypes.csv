@@ -1,0 +1,77 @@
+name,type,category,locus,title,description
+bflm,phenotype,biofilm,,biofilm forming capacity,
+swim,phenotype,motility,,swimming motility,
+twitch,phenotype,motility,,twitching motility,
+swarm,phenotype,motility,,swarming motility,
+PMB-R,phenotype,AMR,,polymyxin B/Colistin resistance,
+FEP-R,phenotype,AMR,,cefepime resistance,
+TET-R,phenotype,AMR,,tetracycline resistance,
+CIP-R,phenotype,AMR,,ciprofloxacin resistance,
+CHL-R,phenotype,AMR,,chloramphenicol resistance,
+GEN-R,phenotype,AMR,,gentamicin resistance,
+ERY-R,phenotype,AMR,,erythromycin resistance,
+IPM-R,phenotype,AMR,,imipenem resistance,
+cdiGMP,phenotype,EPS,,cyclic di-GMP overproduction,
+FliC,antigen,motility,PA1092,flagellar filament,
+FliCa,antigen,motility,,a-type Flagellin,
+FliCb,antigen,motility,PA1092,b-type Flagellin,
+FlgEHKL,antigen,motility,,flagellar hook-basal body,
+PilQ,antigen,motility,PA5040,type IV Pilus Secretin System,
+PilA,antigen,motility,PA4525,type IV Pilus major pilin PilA ,
+PilB,antigen,motility,PA4526,type IV Pilus minor pilin PilAB,
+LasA,antigen,virulence,PA1871,protease LasA,
+LasB,antigen,virulence,PA3724,elastase LasB,
+Apr,antigen,virulence,PA1249,alkaline metalloproteinase Apr,
+XcpQ,antigen,secretion,PA3105,T2SS general secretion pathway secretin XcpQ,
+ToxA,antigen,virulence,PA1148,exotoxin A,
+EstA,antigen,virulence,PA5112,esterase EstA,
+LepA,antigen,virulence,PA4541,"large extracellular protease, LepA",
+PlpD,antigen,virulence,PA3339,patadin-like protein PlpD,
+Phz,antigen,virulence,,phenazine production,
+Pcn,antigen,virulence,,pyocyanin production,
+Pvd,antigen,virulence,,pyoveridine production,
+Hcn,antigen,virulence,,hydrogen cyanide production,
+Rhl,antigen,virulence,,rhamnolipid production,
+T3SS,antigen,virulence,,type III secretion system,
+T6SS,antigen,virulence,,type VI secretion system,H-T6SS
+Pel,antigen,EPS,,exopolysaccharide Pel,
+Psl,antigen,EPS,,exopolysaccharide Psl,
+CdrB,antigen,EPS,PA4624,Psl-binding leptin CdrB,
+SCV,phenotype,EPS,,small colony variant,
+Mucoid,phenotype,EPS,,mucoid variant,
+Alginate,antigen,EPS,,alginate overproduction,
+OprM,antigen,AMR,PA0427,MDR efflux porin OprM,MexAB-OprM is constitutively expressed under lab growth conditions [@Adewoye:2002jm]
+OprJ,antigen,AMR,PA4597	,MDR efflux porin OprJ,MexCD-OprJ is not expressed in WT cells [@Li:2015fx]
+OprN,antigen,AMR,PA2495,MDR efflux porin OprN,MexEF-OprN is not expressed in WT cells [@Li:2015fx]
+OprOP,antigen,porin,PA3279,phosphate uptake porins OprO and OprP,induced in phosphate limitation [@Hancock:1982if]. The two porins are structurally similar and have immunologic cross-reactivity. [@Chevalier:2017ck]
+OpdH,antigen,porin,PA0755,cis-aconitate uptake porin OpdH,upregulated only in presence of substrates (e.g. cis-aconitate and vanillate) [@Taylor:2019cn]; [@Tamber:2007gh]
+OprD,antigen,porin,PA0958,amino acid transporter porin OprD,"major porin. frequently lost in infection isolates; loss confers carbapenem (esp. imipenem) resistance, fitness advantage [@Skurnik:2013ja]. "
+OprL,antigen,porin,,peptidoglycan-associated lipoprotein (PAL),[@Lim:1997hv]
+OprF,antigen,porin,,structural porin OprF ,[@Chevalier:2017ck]
+OprG,antigen,porin,,porin OprG,iron uptake? [@Chevalier:2017ck]
+OprH,antigen,porin,,outer membrane stabilization porin OprH,[@Chevalier:2017ck]
+OprB,antigen,porin,,glucose uptake porin OprB,50x downregulated in biofilms vs. planktonic cells [@Chevalier:2017cka]
+MexAB,antigen,AMR,,RND-type multidrug efflux pump MexAB,MexAB-OprM is constitutively expressed under lab growth conditions [@Adewoye:2002jm]
+MexCD,antigen,AMR,,RND-type multidrug efflux pump MexCD,MexCD-OprJ is not expressed in WT cells [@Li:2015fx]
+MexEF,antigen,AMR,,RND-type multidrug efflux pump MexEF,MexEF-OprN is not expressed in WT cells [@Li:2015fx]
+MexJK,antigen,AMR,,RND-type multidrug efflux pump MexJK,
+MexXY,antigen,AMR,,RND-type multidrug efflux pump MexXY,Weakly expressed in WT cells [@Li:2015fx]
+MexGHI,antigen,AMR,,RND-type multidrug efflux pump MexGHI,
+PirA,antigen,iron,,ferric enterobactin siderophore receptor, tonB-dependent[@Cornelis:2009dk] [@Ghysels:2005bf]
+Pfu,antigen,iron,,heme uptake receptor Phu [@Minandri:2016ba],
+TonB,antigen,iron,,TonB,
+FptA,antigen,iron,,pyochelin siderophore transporter FptA,
+FpvA,antigen,iron,,pyoveridine siderophore transporter FpvA,
+PfeA,antigen,iron,,ferric enterobactin siderophore receptor PfeA,
+CupB5,antigen,secretion,,chaperone usher fimbrae CupB5,
+CupA,antigen,secretion,,chaperone usher fimbrae CupA,
+CupB,antigen,secretion,,chaperone usher fimbrae CupB,
+CupC,antigen,secretion,,chaperone usher fimbrae CupC,
+CupD,antigen,secretion,,chaperone usher fimbrae CupD,
+LPS-LipidA-Palmitoyl,antigen,LPS,,palmitoyl-Lipid A LPS,
+L-LipidA-Ara4N,antigen,LPS,,Ara4N-Lipid A LPS,
+LPS-CPA,antigen,LPS,,Common Polysaccharide Antigen LPS,
+LPS-OSA,antigen,LPS,,O-Specific Antigen LPS,
+LPS-galU,antigen,LPS,,"truncated outer core oligosaccharide, uncapped LPS",
+LPS-rough,antigen,LPS,,rough LPS,
+LPS,antigen,LPS,,lipopolysaccharide,
