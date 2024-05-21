@@ -35,28 +35,28 @@ This repository contains five components:
 
 5. Execute the workflow
 
-	Some experiments have multiple Snakemake workflows (specified in distinct `.smk` files) which need to be invoked in the following order: 
-	
-	1. `preprocess.smk`
-	2. `feature_table.smk`
-	3. `Snakefile`
-	
-	These workflows are separated because the `preprocess` step creates lots of large temporary files which you may not want to preserve on cluster storage; once this step is completed, the `intermediate/` directory can be safely deleted and subsequent workflows invoked separately.
+	Each workflow can be executed by running this command from the relevant directory:
 
-	Invoke `snakemake` with use `-s` to specify the path to a specific workflow. You may want to test your configuration first by performing a dry-run via:
+		snakemake --use-conda --cores all
 
-		snakemake --use-conda -s workflow/preprocess.smk -n
+	You may want to test your configuration first by performing a dry-run via:
+
+		snakemake --use-conda -nr
 
 	This will print the execution plan but not run any of the code.
 
-	Finally, invoke each workflow:
+	Alternatively, some experiments are broken into multiple Snakemake workflows (specified in distinct `.smk` files)
+	which can be invoked individually. The workflows are arragned this way because the `preprocess` step creates lots 
+	of large temporary files which you may not want to preserve on cluster storage; once this step is completed, the 
+	`intermediate/` directory can be safely deleted and subsequent workflows invoked separately. The sub-workflows
+	can be invoked using the `-s` flag to specify a path to a specific workflow file, e.g.:
 
 		snakemake --use-conda --cores all -s workflow/preprocess.smk
 		snakemake --use-conda --cores all -s workflow/feature_table.smk
-		snakemake --use-conda --cores all -s workflow/Snakefile
+		snakemake --use-conda --cores all -s workflow/downstream.smk
 
-	See the [Snakemake documentation](https://snakemake.readthedocs.io/en/stable/executable.html) for further details. In particular, you likely want to adjust `--cores $N` to specify that `$N` jobs to execute in parallel, where `$N` should be the number of CPU cores available on your machine or cluster instance.
-
+	See the [Snakemake documentation](https://snakemake.readthedocs.io/en/stable/executable.html) for further details. In particular, you likely want to adjust `--cores $N` 
+	to specify the number of CPU cores available on your machine or cluster instance.
 
 ## Included demonstrations
 
