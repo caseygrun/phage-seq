@@ -1,11 +1,3 @@
-# The main entry point of your workflow.
-# After configuring, running snakemake -n in a clone of this repository should successfully execute a dry-run of the workflow.
-
-
-# report: "report/workflow.rst"
-
-# Allow users to fix the underlying OS via singularity.
-# singularity: "docker://continuumio/miniconda3"
 
 from pathlib import Path
 import pandas as pd
@@ -16,12 +8,11 @@ include: 'rules/common.smk'
 rule all:
 	input:
 		# transformations
-		expand('results/tables/{space}/transformed/{transform}/feature_table.biom', space=['aa','cdrs','cdr3'], transform=['log1p','sqrt','scran']),
+		expand('results/tables/{space}/transformed/{transform}/feature_table.biom', space=['aa','cdrs','cdr3'], transform=['log1p','scran']),
 
 		# diversity
 		expand('results/tables/{space}/alpha_diversity.txt',        space=['aa','cdrs','cdr3']),
 		expand('intermediate/{space}/depth/sample_depth_stats.rds', space=['aa','cdrs','cdr3']),
-		# expand('results/tables/{space}/beta/all/pcoa/{metric}.ordination.gz'          ,      space=['aa','cdrs','cdr3'], metric=['braycurtis','jaccard']),
 		expand('results/tables/{space}/beta/all/pcoa/{metric}-{library}.ordination.gz',      space=['aa','cdrs','cdr3'], metric=['braycurtis','jaccard'], library=get_libraries()),
 		expand('results/tables/{space}/beta/top_asvs/pcoa/{metric}-{library}.ordination.gz', space=['aa','cdrs','cdr3'], metric=['braycurtis','jaccard',
 			'weighted_unifrac',
@@ -33,10 +24,6 @@ rule all:
 
 		expand('results/tables/{space}/beta/top_asvs/pcoa/{metric}-{library}.ordination.gz', space=['cdr3'], metric=[
 			'deicode'], library=['alpaca']),
-			
-		#expand("intermediate/align/ASVs/{library}.bam", library=['alpaca','synthetic'])
-		# 'intermediate/denoise/pairs.rds'
-
 
 		# ordination
 		# ----------
@@ -58,7 +45,6 @@ rule all:
 		# 	method=['TSVD','TSVD-TSNE'],
 		# ),
 
-		# synthetic is too big for TSVD
 		expand('intermediate/{space}/features/{partition}/{library}/transform/{transform}/ordination/{method}.ordination.gz',
 			space=['cdr3', 'cdrs', 'aa'],partition=['all'],transform=['scran','log1p'],method=['TSVD','TSVD-TSNE'],library=['alpaca']),
 
@@ -334,6 +320,7 @@ rule alpha_diversity:
 rule depth_stats:
 	input: 'results/tables/{space}/feature_table.biom'
 	output: 'intermediate/{space}/depth/sample_depth_stats.rds'
+	log:    'results/logs/{space}/depth_stats.log'
 	conda: 'envs/breakaway.yaml'
 	threads: workflow.cores
 	script: 'scripts/depth_stats.R'
@@ -396,6 +383,7 @@ rule filter_feature_table_by_library:
 	output:
 		feature_table = 'intermediate/{space}/features/{partition}/{library}/feature_table.biom',
 		feature_data =  'intermediate/{space}/features/{partition}/{library}/asvs.csv'
+	log: 'results/logs/{space}/features/{partition}/{library}/filter_feature_table_by_library.log'
 	threads: workflow.cores
 	conda: 'envs/biopython-pysam.yaml'
 	script: 'scripts/filter_feature_table_by_library.py'
@@ -467,6 +455,10 @@ rule trim_alignment:
 	conda: 'envs/msa.yaml'
 	shell:"""
 	trimal -in {input} -out {output} -automated1 2> {log}
+	if ! [ -s "{output}" ] ; then
+		cp {input} {output}
+		echo "Alignment trimming on feature MSA {input} resulted in an empty alignment (all positions empty); will use un-trimmed alignment instead to construct ML phylogeny for this feature space" >> {log}
+	fi
 	"""
 
 rule fasttree_msa_asvs:
@@ -493,7 +485,7 @@ rule fasttree_msa_asvs_method:
 		method=list_to_regex(['clustalo','muscle'])
 		# method=r'^(?!trimmed$)'
 	input:  'intermediate/{space}/features/{partition}/{library}/msa-{method}.fasta'
-	output: 'intermediate/{space}/features/{partition}/{library}/msa-{methood}.nwk'
+	output: 'intermediate/{space}/features/{partition}/{library}/msa-{method}.nwk'
 	log:    'results/logs/{space}/features/{partition}/{library}/fasttree_msa_asvs_{method}.log'
 	conda: 'envs/msa.yaml'
 	threads: 4
@@ -607,6 +599,20 @@ rule lme_enrichment:
 	threads: 2
 	script: 'scripts/lme_enrichment.py'
 
+rule design_ag_matrix:
+	input:
+		'results/tables/aa/feature_table.biom',
+		'results/tables/cdr3/feature_table.biom',
+		'config/metadata-phenotypes.csv',
+		'config/phenotypes.csv',
+	output:
+		designs = 'intermediate/learning/designs.pickle',
+		ag_matrix = 'intermediate/learning/ag_matrix.pickle',
+	log: 'results/logs/learning/design_ag_matrix.log'
+	threads: workflow.cores,
+	conda: 'envs/xgb.yaml'
+	script: 'scripts/design_ag_matrix.py'
+
 rule xgb_tuning_manual:
 	input:
 		designs='intermediate/learning/designs.pickle',
@@ -649,7 +655,7 @@ rule logistic_regression_tuning_bayes:
 	script: 'scripts/logistic_regression_tuning_bayes.py'
 
 
-test_antigens=['FliC', 'FlgEHKL', 'PilQ', 'PilA', 'LasA', 'LasB','Apr','XcpQ','ToxA', 'T3SS', 'T6SS', 'Pel', 'Psl', 'OprM', 'OprN', 'OprJ', 'OprD', 'CupA', 'CupB', 'CupC', 'CupD']
+test_antigens = config['test_antigens'] if 'test_antigens' in config else []
 
 rule xgb_tunings_manual_cdrs:
 	input: expand('intermediate/learning/xgb/manual/{design}/{antigen}.pickle', design=['CDR3:enr', 'CDR3:R5+enr', 'CDR3:R2345+enr'], antigen=test_antigens)

@@ -223,8 +223,8 @@ rule collapse_feature_table_aa_clusters:
 		mapping = 'intermediate/{run}/aa_cluster/clusters_aa.csv' #expand('intermediate/{{run}}/aa_cluster/{library}_clusters_aa.csv',library=get_libraries())
 	output:
 		feature_table = 'intermediate/{run}/aa_cluster/feature_table.biom'
-	conda: 'envs/biopython-pysam.yaml'
 	log: 'results/logs/{run}/collapse_feature_table_aa_clusters.log'
+	conda: 'envs/biopython-pysam.yaml'
 	script: 'scripts/collapse_feature_table_aa.py'
 
 # align AA ASV sequences to the AA reference, so can extract CDRs and check
@@ -325,6 +325,7 @@ rule sum_feature_table_runs:
 	params:
 		mapping_cols=['guid','ID'],
 		axis='sample'
+	log: 'results/logs/sum_feature_table_runs.log'
 	conda: 'envs/biopython-pysam.yaml'
 	script: 'scripts/collapse_feature_table_aa.py'
 
@@ -368,6 +369,7 @@ rule transform_feature_table_library:
 rule extract_cdrs:
 	input: 'results/tables/aa/asvs.csv'
 	output: 'results/tables/aa/cdrs.csv'
+	log: 'results/logs/aa/extract_cdrs.log'
 	conda: 'envs/biopython-pysam.yaml',
 	params:
 		library_CDRs = {library: get_library_param(library, 'CDRs') for library in get_libraries() }
