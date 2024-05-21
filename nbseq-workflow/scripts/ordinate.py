@@ -9,10 +9,13 @@ with snakemake_log(snakemake) as logfile:
 	method = snakemake.wildcards['method']
 	params = snakemake.params
 
+	# n_components = min([n_samples, n_features, 100])
+	n_components = min(list(ft.shape) + [100])
 	if method == 'TSVD':
-		kwargs = { 'n_components':100, **params }
+		kwargs = { 'n_components':n_components, **params }
 	elif method == 'TSVD-TSNE':
-		kwargs = { 'decomp_kwargs':{'n_components':100}, **params }
+		perplexity = min([float(ft.shape[1])/2, 30.0])
+		kwargs = { 'decomp_kwargs':{'n_components':n_components}, 'perplexity':perplexity, **params }
 	else:
 		kwargs = params
 

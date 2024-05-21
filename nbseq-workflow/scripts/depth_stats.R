@@ -1,10 +1,12 @@
+snakemake@source('common.R')
+snakemake_log_start(snakemake)
+
 library(parallel)
 library(tidyverse)
 library(Matrix)
 # library(rhdf5)
 
-snakemake@source('common.R')
-snakemake_log_start(snakemake)
+
 snakemake_use_threads(snakemake)
 
 
@@ -50,3 +52,5 @@ saveRDS(
 	calculate_sample_feature_stats(ft),
 	snakemake@output[[1]]
 )
+
+snakemake_log_end()

@@ -1,11 +1,12 @@
+snakemake@source('common.R')
+snakemake_log_start(snakemake)
+
 library(tidyverse)
 library(magrittr)
 library(Matrix)
 library(breakaway)
 library(parallel)
 
-snakemake@source('common.R')
-snakemake_log_start(snakemake)
 snakemake_use_threads(snakemake)
 options(error = rlang::entrace)
 
