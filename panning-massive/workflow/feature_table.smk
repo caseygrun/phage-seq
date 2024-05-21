@@ -1,6 +1,6 @@
 include: 'rules/common.smk'
 
-rule all:
+rule feature_table_all:
 	input:
 		# feature tables
 		expand('results/tables/{space}/feature_table.biom',space=['aa','cdrs','cdr3']),
@@ -9,8 +9,7 @@ rule all:
 
 		expand('intermediate/{run}/{space}/summary_features.txt'      , run=get_runs(), space=['aa','cdrs','cdr3']),
 		expand('intermediate/{run}/{space}/summary_total_features.txt', run=get_runs(), space=['aa','cdrs','cdr3']),
-		expand('intermediate/{run}/{phase}/summary_reads.txt'                 , run=get_runs(), phase=['align','aa', 'aa_cluster', 'aa_filter'])
-
+		expand('intermediate/{run}/{phase}/summary_reads.txt'         , run=get_runs(), phase=['align','aa', 'aa_cluster', 'aa_filter'])
 
 
 # ASV FILTERING AND FEATURE TABLES
@@ -78,55 +77,6 @@ rule align_vhh_asv_pairs_na:
 	threads: workflow.cores,
 	conda: 'envs/bowtie2.yaml'
 	script: 'scripts/align_vhh_asv_pairs_na.py'
-	# shell:
-	# 	"""
-	# 	mkdir -p $(dirname {log})
-	# 	{{
-	# 	# intermediate .sam and -unsorted.bam files will be produced before the
-	# 	# final .bam file. Put them in the same directory as the desired output
-	# 	# file.
-	# 	output_dir=$(dirname $(readlink -f {output.name_sorted:q}))
-	# 	mkdir -p $output_dir
-	# 	output_file_name_sorted=$(basename {output.name_sorted:q})
-	# 	output_file_coord_sorted=$(basename {output.coord_sorted:q})
-	#
-	# 	# get absolute path to the input FASTA files before we start changing
-	# 	# the directory
-	# 	seqs_fwd=$(readlink -f {input.fwd:q})
-	# 	seqs_rev=$(readlink -f {input.rev:q})
-	#
-	# 	# the index is a set of 6 files in a subdirectory of
-	# 	# `resources/references`, named according to the nanobody library.
-	# 	# `bowtie2` only looks in the current directory for this index, so we
-	# 	# go there first, then tell it with `-x $library` to look for files like
-	# 	# `{wildcards.library}..1.bt2`, etc.
-	# 	index={input.index:q}
-	# 	library={wildcards.library:q}
-	# 	cd "$index"
-	# 	>&2 pwd
-	#
-	# 	# perform alignment, compress to BAM file
-	# 	bowtie2 -x $library \
-	# 		-1 $seqs_fwd -2 $seqs_rev -f \
-	# 		--ff -I 0 -X 100 \
-	# 		--local --np {params.n_penalty} --n-ceil {params.n_ceil} \
-	# 		--threads {threads} \
-	# 	| samtools view -b -o "$output_dir/$library-unsorted.bam"
-	#
-	# 	# -S "$output_dir"/"$library.sam"
-	# 	# --no-discordant --no-mixed \
-	#
-	# 	# compress, to BAM files
-	# 	# samtools view "$output_dir/$library.sam" -b -o "$output_dir/$library-unsorted.bam"
-	#
-	# 	# sort by read name (rather than leftmost coordinates) so mate pairs appear consectuviely
-	# 	samtools sort -n "$output_dir/$library-unsorted.bam" -o "$output_dir/$output_file_name_sorted"
-	#
-	# 	# make a coordinate-sorted and indexed file for viewing
-	# 	samtools sort "$output_dir/$library-unsorted.bam" -o "$output_dir/$output_file_coord_sorted"
-	# 	samtools index "$output_dir/$output_file_coord_sorted"
-	# 	}} 1>{log} 2>{log}
-	# 	"""
 
 # use BAM alignment of ASV sequences to produce an implied full-length
 # reference sequence. ASVs are renamed according to read pairs
@@ -223,8 +173,8 @@ rule collapse_feature_table_aa_clusters:
 		mapping = 'intermediate/{run}/aa_cluster/clusters_aa.csv' #expand('intermediate/{{run}}/aa_cluster/{library}_clusters_aa.csv',library=get_libraries())
 	output:
 		feature_table = 'intermediate/{run}/aa_cluster/feature_table.biom'
-	conda: 'envs/biopython-pysam.yaml'
 	log: 'results/logs/{run}/collapse_feature_table_aa_clusters.log'
+	conda: 'envs/biopython-pysam.yaml'
 	script: 'scripts/collapse_feature_table_aa.py'
 
 # align AA ASV sequences to the AA reference, so can extract CDRs and check
@@ -325,6 +275,7 @@ rule sum_feature_table_runs:
 	params:
 		mapping_cols=['guid','ID'],
 		axis='sample'
+	log: 'results/logs/sum_feature_table_runs.log'
 	conda: 'envs/biopython-pysam.yaml'
 	script: 'scripts/collapse_feature_table_aa.py'
 
@@ -341,58 +292,38 @@ rule concat_asvs_aa:
 	conda: 'envs/biopython-pysam.yaml'
 	script: 'scripts/concat_asvs.py'
 
-
-rule transform_feature_table:
-	wildcard_constraints:
-		transform=list_to_regex(['log1p','sqrt'])
-	input: 'results/tables/{space}/feature_table.biom'
-	output: 'results/tables/{space}/transformed/{transform}/feature_table.biom'
-	conda: 'envs/biopython-pysam.yaml',
-	script: 'scripts/transform_ft.py'
-
-rule transform_feature_table_library:
-	wildcard_constraints:
-		transform=list_to_regex(['log1p','sqrt'])
-	input: 'intermediate/{space}/features/{partition}/{library}/feature_table.biom'
-	output: 'intermediate/{space}/features/{partition}/{library}/transform/{transform}/feature_table.biom'
-	conda: 'envs/biopython-pysam.yaml',
-	script: 'scripts/transform_ft.py'
-
-
-# rule transform_feature_table_library:
-# 	input: 'intermediate/{space}/features/{partition}/{library}/feature_table.biom'
-# 	output: 'intermediate/{space}/features/{partition}/{library}/transformed/{transform}/feature_table.biom'
-# 	conda: 'envs/biopython-pysam.yaml',
-# 	script: 'scripts/transform_ft.py'
-
+# moved to common.smk
+# --------------------------
 rule extract_cdrs:
 	input: 'results/tables/aa/asvs.csv'
 	output: 'results/tables/aa/cdrs.csv'
+	log: 'results/logs/aa/extract_cdrs.log'
 	conda: 'envs/biopython-pysam.yaml',
 	params:
 		library_CDRs = {library: get_library_param(library, 'CDRs') for library in get_libraries() }
 	script: 'scripts/extract_cdrs.py'
 
+# moved to downstream.smk
+# --------------------------
+# rule link_asvs_for_mmseqs2:
+# 	wildcard_constraints:
+# 		space=list_to_regex(['na','aa','cdrs','cdr3'])
+# 	input: 'results/tables/{space}/asvs.csv'
+# 	output: 'intermediate/{space}/asvs.csv'
+# 	shell: """
+# 	cp "{input}" "{output}"
+# 	"""
 
-rule link_asvs_for_mmseqs2:
-	wildcard_constraints:
-		space=list_to_regex(['na','aa','cdrs','cdr3'])
-	input: 'results/tables/{space}/asvs.csv'
-	output: 'intermediate/{space}/asvs.csv'
-	shell: """
-	cp "{input}" "{output}"
-	"""
-
-rule asvs_to_mmseqs2db:
-	input: 'intermediate/{space}/asvs.fasta'
-	output: directory('intermediate/{space}/features_db')
-	conda: 'envs/mmseqs2-vsearch.yaml'
-	shell: """
-	rm -r -f {output}
-	mkdir -p {output}
-	mmseqs createdb {input} {output}/features
-	mmseqs createindex {output}/features {config[scratch]}
-	"""
+# rule asvs_to_mmseqs2db:
+# 	input: 'intermediate/{space}/asvs.fasta'
+# 	output: directory('intermediate/{space}/features_db')
+# 	conda: 'envs/mmseqs2-vsearch.yaml'
+# 	shell: """
+# 	rm -r -f {output}
+# 	mkdir -p {output}
+# 	mmseqs createdb {input} {output}/features
+# 	mmseqs createindex {output}/features {config[scratch]}
+# 	"""
 
 use rule collapse_feature_table_clonotype as collapse_feature_table_clonotype_all with:
 	input:
@@ -413,8 +344,25 @@ use rule collapse_feature_table_clonotype_all as collapse_feature_table_cdr3_all
 		mapping_cols=['aaSVID','CDR3ID']
 	log: 'results/logs/collapse_feature_table_cdr3.log'
 
+
+
+# use rule collapse_feature_table_clonotype as collapse_feature_table_cdr3_all with:
+# 	input:
+# 		feature_table = 'results/tables/aa/feature_table.biom',
+# 		mapping =       'results/tables/aa/cdrs.csv'
+# 	output:
+# 		feature_table = 'results/tables/cdr3/feature_table.biom'
+# 	params:
+# 		mapping_cols=['aaSVID','CDR3ID']
+# 	log: 'results/logs/collapse_feature_table_cdr3.log'
+# 	threads: workflow.cores//2
+
 rule copy_cdrs_clonotype:
 	input: 'results/tables/aa/cdrs.csv'
 	output: 'results/tables/{space}/asvs.csv'
 	threads: workflow.cores//2
 	script: 'scripts/copy_cdrs_clonotype.py'
+
+
+rule dummy:
+	input: 'results/tables/aa/feature_table.biom'

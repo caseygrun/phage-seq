@@ -9,7 +9,7 @@
 
 include: 'rules/common.smk'
 
-rule all:
+rule preprocess_all:
 	input:
 		# summaries
 		expand('intermediate/{run}/{phase}/summary_reads.txt',          phase=['primers_trimmed','filtered_trimmed','denoise'], run=get_runs()),

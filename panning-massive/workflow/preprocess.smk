@@ -9,20 +9,22 @@
 
 include: 'rules/common.smk'
 
-
-rule all:
+rule preprocess_all:
 	input:
 		# summaries
-		'results/tables/sample_summary_reads.txt',
-		'results/tables/sample_summary_features.txt',
-		'results/tables/summary_total_features.txt',
+		expand('intermediate/{run}/{phase}/summary_reads.txt',          phase=['primers_trimmed','filtered_trimmed','denoise'], run=get_runs()),
+		expand('intermediate/{run}/{phase}/summary_features.txt',       phase=['filtered_trimmed_dereplicated','denoise'],      run=get_runs()),
+		expand('intermediate/{run}/{phase}/summary_total_features.txt', phase=['denoise'],                                      run=get_runs()),
 
 		# feature tables
+		expand('results/runs/{run}/denoise/feature_table.biom', run=get_runs()),
+		expand('results/runs/{run}/denoise/unique_pairs.csv',   run=get_runs()),
+
+		'config/guids.tsv', 'config/metadata_full.tsv', 'config/metadata_full.csv'
 		# expand('results/tables/{space}/feature_table.biom',space=['aa','cdrs','cdr3']),
 		# expand('results/tables/{space}/asvs.csv',space=['aa','cdrs','cdr3']),
 		# expand('results/tables/aa/cdrs.csv'),
 		# expand('results/tables/{space}/cdrs.csv',space=['aa','cdrs','cdr3']),
-
 
 rule guids:
 	input:
