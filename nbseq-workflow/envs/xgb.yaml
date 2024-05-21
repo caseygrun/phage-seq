@@ -13,3 +13,6 @@ dependencies:
 - scikit-optimize=0.9.0
 - scipy=1.8.1
 - xgboost=1.5.1
+- pip
+- pip:
+  - "git+https://github.com/caseygrun/nbseq.git#egg=nbseq"

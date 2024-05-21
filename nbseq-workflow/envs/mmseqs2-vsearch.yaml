@@ -13,3 +13,6 @@ dependencies:
 - samtools=1.16.1
 - vsearch=2.22.1
 - zlib=1.2.13
+- pip
+- pip:
+  - "git+https://github.com/caseygrun/nbseq.git#egg=nbseq"

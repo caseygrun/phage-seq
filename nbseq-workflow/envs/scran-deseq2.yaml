@@ -24,3 +24,6 @@ dependencies:
   - r-reticulate=1.25
   - r-tidyverse=1.3.2
   - scipy=1.8.1
+  - pip
+  - pip:
+    - "git+https://github.com/caseygrun/nbseq.git#egg=nbseq"

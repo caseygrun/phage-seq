@@ -13,3 +13,7 @@ dependencies:
 - joblib=1.2.0
 - sqlite=3.40.0
 - sqlalchemy=1.4.45
+- pip
+- pip:
+  - "git+https://github.com/caseygrun/nbseq.git#egg=nbseq"
+

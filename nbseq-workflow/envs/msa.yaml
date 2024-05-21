@@ -3,18 +3,12 @@ channels:
 - bioconda
 - defaults
 dependencies:
-# - biopython
-# - pandas
-# - joblib
-# - fasttree
-# - mafft
-# - trimal
 - biopython=1.79
 - pandas=1.4.3
 - python=3.10.5
 - joblib=1.1.0
 - fasttree=2.1.11
-- mafft=7.505
+- mafft=7.525
 - trimal=1.4.1
 - clustalo
 - muscle

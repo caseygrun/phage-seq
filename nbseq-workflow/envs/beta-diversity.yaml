@@ -16,3 +16,6 @@ dependencies:
 - anndata=0.8.0
 - scikit-learn=1.2.0
 - conda-forge::simplejson=3.18.1
+- pip
+- pip:
+  - "git+https://github.com/caseygrun/nbseq.git#egg=nbseq"
