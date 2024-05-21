@@ -1,0 +1,9 @@
+include: "preprocess.smk"
+include: "feature_table.smk"
+include: "downstream.smk"
+
+use rule downstream_all as all with:
+	params:
+		dummy='dummy'
+
+ruleorder: extract_cdrs > extract_cdrs_
