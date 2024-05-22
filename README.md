@@ -62,11 +62,15 @@ This repository contains five components:
 
 Two demonstrations of the workflow code are included:
 
-- `panning-minimal`: a subset of the raw data from `panning-extended` is embedded in the repository so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library.
+- **`panning-minimal`: a subset of the raw data from `panning-extended` is embedded in the repository** so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library. 
+	
+	The `panning-minimal` dataset consists of six selections (three biological replicates each of two different conditions), plus several samples where the raw input library was sequenced without panning. Each sample has been arbitrarily downsamples to 7500 reads for the sake of file space and processing time.
 
-	To run the complete workflow, follow the steps above. Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, to make sure this notebook executes in the conda environment where you have installed `nbseq`, you will need to change the notebook kernel: from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]"
+	To run the complete workflow, follow the steps above. The analysis requires 15--30 minutes to download and install conda packages, then ~10--15 min to run on a 16-core workstation.
 
-- The full processed dataset for `panning-extended` is available for exploration. You do not need to run the workflow but can explore the results interactively using the `nbseq` library. 
+	After running the Snakemake workflow, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, to make sure this notebook executes in the conda environment where you have installed `nbseq`, you will need to change the notebook kernel: from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]"
+
+- **The full processed dataset for `panning-extended` is available for exploration.** You do not need to run the workflow but can explore the results interactively using the `nbseq` library. 
   
 	Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
