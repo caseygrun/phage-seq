@@ -4,7 +4,7 @@
 # samples: "config/samples.tsv"
 
 # relative to the working directory
-raw_sequence_dir: '../input'
+raw_sequence_dir: './input'
 scratch: '~/scratch60'
 input_query: "expt == '027j.lib' & name != '027j.lib.P2.8'"
 libraries:
