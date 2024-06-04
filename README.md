@@ -1,6 +1,5 @@
 Code used to process the high-throughput sequencing data in our manuscript "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing." 
 
-
 This repository contains five components:
 
 - `nbseq-workflow` contains shared code for a Snakemake-based workflow for processing raw Phage-seq sequencing data. The other directories include symbolic links to the `scripts`, conda environments (`envs`), and `rules` defined in this directory. However, each specific experiment contains its own configuration, resources, and Snakemake workflow definitions (`Snakefile` and `*.smk`).
@@ -10,11 +9,14 @@ This repository contains five components:
 - `panning-minimal` is a runnable example containing a small subset of the data from `panning-extended`. The code is otherwise the same as `panning-extended`.
 
 
-## Installing and running the code
+## Installation and usage
 
 1. Clone this entire repository
 
-	[Clone](https://help.github.com/en/articles/cloning-a-repository) this repository to your local system or cluster, into the place where you want to perform the data analysis.
+	[Clone](https://help.github.com/en/articles/cloning-a-repository) this repository to your local system or cluster, into the place where you want to perform the data analysis:
+
+		git clone https://github.com/caseygrun/phage-seq.git
+		cd phage-seq
 
 2. Install the [Mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html#mamba-install) (or [Conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)) package manager if it is not already installed on your machine or cluster. I recommend using the [`miniforge`](https://github.com/conda-forge/miniforge) distribution. 
 3. Install Snakemake using `conda` (or `mamba`):
@@ -55,7 +57,7 @@ This repository contains five components:
 		snakemake --use-conda --cores all -s workflow/feature_table.smk
 		snakemake --use-conda --cores all -s workflow/downstream.smk
 
-	See the [Snakemake documentation](https://snakemake.readthedocs.io/en/stable/executable.html) for further details. In particular, you likely want to adjust `--cores $N` 
+	See the [Snakemake documentation](https://snakemake.readthedocs.io/en/stable/executing/cli.html) for further details. In particular, you likely want to adjust `--cores $N` 
 	to specify the number of CPU cores available on your machine or cluster instance.
 
 ## Included demonstrations
@@ -68,7 +70,9 @@ Two demonstrations of the workflow code are included:
 
 	To run the complete workflow, follow the steps above. The analysis requires 15--30 minutes to download and install conda packages, then ~10--15 min to run on a 16-core workstation.
 
-	After running the Snakemake workflow, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, to make sure this notebook executes in the conda environment where you have installed `nbseq`, you will need to change the notebook kernel: from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]"
+	After running the Snakemake workflow, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. 
+
+	Importantly, the first time you open this notebook, you will need to change the "notebook kernel," to ensure that the Python process backing this notebook is executed within the correct conda environment (e.g. the environment where you installed `nbseq`). To do this, from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]" (assuming you named the conda environment `nbseq`)
 
 - **The full processed dataset for `panning-extended` is available for exploration.** You do not need to run the workflow but can explore the results interactively using the `nbseq` library. 
   
@@ -78,7 +82,7 @@ Two demonstrations of the workflow code are included:
 		wget https://zenodo.org/records/11246658/files/panning-extended-results.tar.gz?download=1
 		tar vzxf panning-extended-results.tar.gz
 
-	Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, to make sure this notebook executes in the conda environment where you have installed `nbseq`, you will need to change the notebook kernel: from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]"
+	Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will need to change the "notebook kernel," to ensure that the Python process backing this notebook is executed within the correct conda environment (e.g. the environment where you installed `nbseq`). To do this, from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]"
 
 	The data package will create `results/` and `intermediate/` subdirectories, which will contain the full amino acid and CDR3 feature tables, feature sequences, and a SQLite database for interactive exploration. All data necessary to execute the demonstration notebook is included.
 
