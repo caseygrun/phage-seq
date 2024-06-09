@@ -37,13 +37,13 @@ This repository contains five components:
 
 5. Execute the workflow
 
+	You may want to test your configuration first by performing a dry-run via:
+
+		snakemake --use-conda -n
+
 	Each workflow can be executed by running this command from the relevant directory:
 
 		snakemake --use-conda --cores all
-
-	You may want to test your configuration first by performing a dry-run via:
-
-		snakemake --use-conda -nr
 
 	This will print the execution plan but not run any of the code.
 
@@ -72,17 +72,17 @@ Two demonstrations of the workflow code are included:
 
 	After running the Snakemake workflow, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. 
 
-	Importantly, the first time you open this notebook, you will need to change the "notebook kernel," to ensure that the Python process backing this notebook is executed within the correct conda environment (e.g. the environment where you installed `nbseq`). To do this, from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]" (assuming you named the conda environment `nbseq`)
+	Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
 
 - **The full processed dataset for `panning-extended` is available for exploration.** You do not need to run the workflow but can explore the results interactively using the `nbseq` library. 
   
 	Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
 		cd panning-extended
-		wget https://zenodo.org/records/11246658/files/panning-extended-results.tar.gz?download=1
+		wget https://zenodo.org/records/11246658/files/panning-extended-results.tar.gz
 		tar vzxf panning-extended-results.tar.gz
 
-	Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will need to change the "notebook kernel," to ensure that the Python process backing this notebook is executed within the correct conda environment (e.g. the environment where you installed `nbseq`). To do this, from the JupyterLab menu bar, choose Kernel > Change Kernel, then select "Python [conda env:nbseq]"
+	Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
 
 	The data package will create `results/` and `intermediate/` subdirectories, which will contain the full amino acid and CDR3 feature tables, feature sequences, and a SQLite database for interactive exploration. All data necessary to execute the demonstration notebook is included.
 
