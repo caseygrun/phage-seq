@@ -92,9 +92,11 @@ Two demonstrations of the workflow code are included:
   
 	Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
-		cd panning-extended
-		wget https://zenodo.org/records/11246658/files/panning-extended-results.tar.gz
-		tar vzxf panning-extended-results.tar.gz
+	```bash
+	cd panning-extended
+	wget https://zenodo.org/records/11246658/files/panning-extended-results.tar.gz
+	tar vzxf panning-extended-results.tar.gz
+	```
 
 	Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
 
