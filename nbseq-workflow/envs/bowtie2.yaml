@@ -17,4 +17,4 @@ dependencies:
 - python>=3.7
 - pip
 - pip:
-  - "git+https://github.com/caseygrun/nbseq.git#egg=nbseq"
+  - "git+https://github.com/caseygrun/nbseq.git@v1.0.0#egg=nbseq"
