@@ -1,0 +1,7 @@
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- bioconductor-dada2==1.16
+- r-ggplot2

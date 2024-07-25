@@ -1,0 +1,561 @@
+# The main entry point of your workflow.
+# After configuring, running snakemake -n in a clone of this repository should successfully execute a dry-run of the workflow.
+
+
+# report: "report/workflow.rst"
+
+# Allow users to fix the underlying OS via singularity.
+# singularity: "docker://continuumio/miniconda3"
+
+configfile: 'config/config.yaml'
+SAMPLES = ['Kaz_Lib']
+
+def get_library_params(library):
+	if library in config['libraries']:
+		return config['libraries'][library]
+	else:
+		raise Exception(f"Unknown library {library} (is it listed in config.yaml under `libraries`?)")
+
+def get_library_param(library, param):
+	return get_library_params(library)[param]
+
+def get_libraries():
+	return config['libraries'].keys()
+
+def list_to_regex(lst):
+	import re
+	return "(" + '|'.join(re.escape(str(l)) for l in lst) + ")"
+
+
+rule all:
+	input:
+		# 'results/tables/vhh_asvs_translated.fasta'
+		expand('results/tables/{library}_cdrs.csv', library = get_libraries()),
+		'results/tables/summary_denoise.txt'
+
+
+rule concat_sequences:
+	# TODO: generalize?
+	input: config['raw_sequence_dir']
+	output:
+		fwd=expand('intermediate/concat/fwd/{sample}.fastq.gz', sample=SAMPLES),
+		rev=expand('intermediate/concat/rev/{sample}.fastq.gz', sample=SAMPLES)
+	shell:"""
+	mkdir -p intermediate/concat
+	cat {input}/Kaz_Lib_001_001_ACCACGAC-CGCTGTCT_L001_R1_*.fastq.gz > {output.fwd}
+	cat {input}/Kaz_Lib_001_001_ACCACGAC-CGCTGTCT_L001_R2_*.fastq.gz > {output.rev}
+	"""
+
+rule trim_primers:
+	group: 'trim_primers'
+	# input: #unpack(trim_primers_input)
+	# 	fwd='intermediate/partitioned/{sample}-R1-{partition}.fastq.gz',
+	# 	rev='intermediate/partitioned/{sample}-R2-{partition}.fastq.gz'
+	input: #unpack(trim_primers_input)
+		fwd='intermediate/concat/fwd/{sample}.fastq.gz',
+		rev='intermediate/concat/rev/{sample}.fastq.gz'
+	output:
+		fwd='intermediate/primers_trimmed/fwd/{sample}.fastq.gz',
+		rev='intermediate/primers_trimmed/rev/{sample}.fastq.gz',
+		info='intermediate/primers_trimmed/info/{sample}.txt'
+		# directory('intermediate/primers_trimmed/')
+	threads: workflow.cores
+	conda: 'envs/cutadapt.yaml'
+	shell: """
+	PATH_FW={input.fwd:q}
+	PATH_RV={input.rev:q}
+	echo $PATH_FW
+	echo $PATH_RV
+
+	# VHH-fw-1: CGCTCAGGTTGCAGCTCGTGGAGTC
+	# VHH-rv-1: ATACGGCACCGGCGCACCACTAG
+	# NotI cut site (proximal): GCCGCTCAGKTGCAGCTC
+	# - after end-repair: GCTCAGGTTGCA
+	# - but this seems more common: GCTCAGGTGCA
+	# AscI cut site (distal): CGCGCCGGTTGTGGTTTTGGTG
+	# - after end-repair: CCGGTTGTGGTT
+	# converved part of FR4 found in most reverse reads (empirically): CGGTGACCTGGGTCCCCN
+	PRIMER_FWD="GCCGCTCAGKTGCAGCTC"
+	PRIMER_REV="CGGTGACCTGGGTCCCCN"
+
+	# reads may be in one of two orientations due to library prep. try both
+	# and concat results
+	echo "Cutadapt 1..."
+	cutadapt -g "$PRIMER_FWD" -G "$PRIMER_REV" \
+		--cores={threads} \
+		--discard-untrimmed \
+		-o "{output.fwd}.1.fastq.gz" -p "{output.rev}.1.fastq.gz" \
+		$PATH_FW $PATH_RV > "{output.info}"
+
+	echo "Cutadapt 2..."
+	cutadapt -g "$PRIMER_FWD" -G "$PRIMER_REV" \
+		--cores={threads} \
+		--discard-untrimmed \
+		-o "{output.fwd}.2.fastq.gz" -p "{output.rev}.2.fastq.gz" \
+		$PATH_RV $PATH_FW >> "{output.info}"
+
+	echo "cat fwd..."
+	cat "{output.fwd}.1.fastq.gz" "{output.fwd}.2.fastq.gz" > \
+		"{output.fwd}"
+	rm "{output.fwd}.1.fastq.gz" "{output.fwd}.2.fastq.gz"
+
+	echo "cat rev..."
+	cat "{output.rev}.1.fastq.gz" "{output.rev}.2.fastq.gz" > \
+		"{output.rev}"
+	rm "{output.rev}.1.fastq.gz" "{output.rev}.2.fastq.gz"
+	"""
+
+# filter and trim sequences from a sample using dada2; also plot the read quality
+rule filter_trim_sequences:
+	group: 'filter_trim_sequences'
+	input: #'intermediate/primers_trimmed/'
+		# unpack(input_filter_trim_sequences)
+		fwd = 'intermediate/primers_trimmed/fwd/{sample}.fastq.gz',
+		rev = 'intermediate/primers_trimmed/rev/{sample}.fastq.gz'
+	output: #directory('intermediate/filtered_trimmed/')
+		fwd     ='intermediate/filtered_trimmed/fwd/{sample}.fastq.gz',
+		rev     ='intermediate/filtered_trimmed/rev/{sample}.fastq.gz',
+		summary ='intermediate/filtered_trimmed/summary/{sample}.rds',
+		plot_fwd='results/plots/dada2/quality/fwd/{sample}.png',
+		plot_rev='results/plots/dada2/quality/rev/{sample}.png'
+	log: 'results/logs/filter_trim_sequences.{sample}.log'
+	threads: workflow.cores
+	conda:
+		'envs/dada2.yaml'
+	params:
+		maxEE     = 3,
+		truncQ    = 2,
+		minLen    = 150
+	script:
+		'scripts/filter_trim_sequences.R'
+
+
+# checkpoint because this will produce a variable number of partitions per
+# original sample.
+# later rules will inspect the output of this checkpoint in order to figure out
+# the names of the partitions that were created here.
+checkpoint partition_sequences:
+	input:
+		fwd = expand('intermediate/filtered_trimmed/fwd/{sample}.fastq.gz', sample = SAMPLES),
+		rev = expand('intermediate/filtered_trimmed/rev/{sample}.fastq.gz', sample = SAMPLES)
+	output: directory('intermediate/partitioned')
+	params:
+		lines = (50000 * 4)
+	log: "results/logs/partition_sequences.log"
+	shell: """
+	{{
+	mkdir -p {output}/{{fwd,rev}}
+	zcat {input.fwd} | split -l {params.lines} --additional-suffix='.fastq' --filter='gzip > $FILE.gz' - {output}/fwd/Kaz_Lib.
+	zcat {input.rev} | split -l {params.lines} --additional-suffix='.fastq' --filter='gzip > $FILE.gz' - {output}/rev/Kaz_Lib.
+
+	# should produce files like {output}/Kaz_Lib-R1-aa.fastq.gz
+	}} > {log} 2>{log}
+	"""
+
+# get a list of files created when partitioning one sample into multiple
+# this will be used as input for later rules
+def collect_partitions(wildcards):
+	checkpoint_output = checkpoints.partition_sequences.get(**wildcards).output[0]
+	return glob_wildcards('intermediate/partitioned/fwd/{sample}.{partition}.fastq.gz')
+
+
+# learn the forward and reverse error model using dada2
+# use partitioned samples since internally `dada2::learnErrors` uses the core
+# denoising algorithm (`dada2::dada`) which is quadratic in sample depth
+def learn_error_model_input(wildcards):
+	samples, partitions = collect_partitions(wildcards)
+	return {
+		'fwd': expand('intermediate/partitioned/fwd/{sample}.{partition}.fastq.gz', zip, sample=samples, partition=partitions),
+		'rev': expand('intermediate/partitioned/rev/{sample}.{partition}.fastq.gz', zip, sample=samples, partition=partitions)
+	}
+
+rule learn_error_model:
+	input:
+		unpack(learn_error_model_input)
+		# fwd = expand('intermediate/filtered_trimmed/fwd/{sample}.fastq.gz', sample = SAMPLES),
+		# rev = expand('intermediate/filtered_trimmed/rev/{sample}.fastq.gz', sample = SAMPLES)
+	output:
+		#'intermediate/error_model/error_model.rds' #directory('intermediate/error_model/')
+		error_fwd = 'intermediate/error_model/error_model_fwd.rds',
+		error_rev = 'intermediate/error_model/error_model_rev.rds',
+		plot_fwd  = 'results/plots/dada2/error_model_fwd.png',
+		plot_rev  = 'results/plots/dada2/error_model_rev.png'
+	conda:
+		'envs/dada2.yaml'
+	threads: workflow.cores
+	params:
+		nbases=100000000
+	log: "results/logs/learn_error_model.log"
+	script: 'scripts/learn_error_model.R'
+	# shell: "touch {output}"
+
+
+def dereplicate_sequences_input(wildcards):
+	samples, partitions = collect_partitions(wildcards)
+	return {
+		'fwd': expand('intermediate/partitioned/fwd/{sample}.{partition}.fastq.gz', zip, sample=samples, partition=partitions),
+		'rev': expand('intermediate/partitioned/rev/{sample}.{partition}.fastq.gz', zip, sample=samples, partition=partitions)
+	}
+
+rule dereplicate_sequences:
+	# normally this would just be all samples
+	input: unpack(dereplicate_sequences_input)
+	output: #directory('intermediate/filtered_trimmed_dereplicated/')
+		fwd = 'intermediate/filtered_trimmed_dereplicated/fwd.rds',
+		rev = 'intermediate/filtered_trimmed_dereplicated/rev.rds'
+	conda:
+		'envs/dada2.yaml'
+	log: "results/logs/dereplicate_sequences.log"
+	# shell: "mkdir -p {output}"
+	script: 'scripts/dereplicate_sequences.R'
+
+
+rule denoise_sequences:
+	input:
+		error_fwd = 'intermediate/error_model/error_model_fwd.rds',
+		error_rev = 'intermediate/error_model/error_model_rev.rds',
+		dereps_fwd = 'intermediate/filtered_trimmed_dereplicated/fwd.rds',
+		dereps_rev = 'intermediate/filtered_trimmed_dereplicated/rev.rds'
+	output:
+		fwd = 'intermediate/denoised/fwd.rds',
+		rev = 'intermediate/denoised/rev.rds'
+	conda: 'envs/dada2.yaml'
+	threads: workflow.cores,
+	log: "results/logs/denoise_sequences.log"
+	script: 'scripts/denoise_sequences.R'
+
+rule merge_overlap_remove_chimeras:
+	input:
+		dadas_fwd  = 'intermediate/denoised/fwd.rds',
+		dadas_rev  = 'intermediate/denoised/rev.rds',
+		dereps_fwd = 'intermediate/filtered_trimmed_dereplicated/fwd.rds',
+		dereps_rev = 'intermediate/filtered_trimmed_dereplicated/rev.rds'
+	output:
+		feature_table_with_chimeras = 'intermediate/merge/feature_table_with_chimeras.txt',
+		mergers = 'intermediate/merge/mergers.rds',
+		feature_table = 'results/tables/feature_table.txt'
+		# vhh_asvs = 'results/tables/vhh_asvs.fasta',
+		# summary = 'intermediate/sample_summary.txt'
+	params:
+		merge = {
+			# this is a highly overlapping library; most pairs overlap by >100
+			# nt or not at all
+			'minOverlap': 80,
+
+			# empirically, a large number of sequences overlap by >100 nt,
+			# but some have 1-2 mismatches and so overlap gets rejected.
+			# worse matches may have up to 20 nt mismatches
+			'maxMismatch': 20,
+
+			# these parameters are passed to dada2::nwalign. this is more
+			# permissive than the defaults within dada2::mergePairs (1, -8, -8)
+			# which are designed to encourage overlap with no mismatches
+			'match':5,
+			'mismatch':-4,
+			'gap':-8
+		}#{'maxMismatch':2, 'minOverlap': 10}
+	threads: workflow.cores,
+	log: 'results/logs/merge_overlap_remove_chimeras.log'
+	conda: 'envs/dada2.yaml'
+	script: 'scripts/merge_overlap_remove_chimeras.R'
+
+rule feature_table_to_unique_sequences_fasta:
+	input: 'results/tables/feature_table.txt'
+	output: 'results/tables/vhh_asvs.fasta'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/feature_table_to_unique_sequences_fasta.py'
+
+# rule merge_by_reference:
+# 	input:
+# 		'intermediate/filtered_trimmed_dereplicated',
+# 		'intermediate/denoised'
+# 	output:
+# 		'results/tables/feature_table.txt',
+# 		'results/tables/vhh_asvs.fasta',
+# 		'intermediate/sample_summary.txt'
+
+rule denoise_summary:
+	input:
+		dadas_fwd  = 'intermediate/denoised/fwd.rds',
+		dadas_rev  = 'intermediate/denoised/rev.rds',
+		filter_summaries = expand('intermediate/filtered_trimmed/summary/{sample}.rds', sample = SAMPLES),
+		feature_table_with_chimeras = 'intermediate/merge/feature_table_with_chimeras.txt',
+		feature_table = 'results/tables/feature_table.txt'
+	output:
+		summary_filter = 'results/tables/summary_filter.txt',
+		summary_denoise = 'results/tables/summary_denoise.txt'
+	conda: 'envs/dada2.yaml'
+	script: 'scripts/denoise_summary.R'
+
+def build_alignment_index_input(wildcards):
+	assert wildcards['library'] in config['libraries'], ("Reference sequence for "
+	f"{wildcards['library']} not found in configuration file. "
+	"Cannot build reference database to align nucleic acid ASVs.")
+	reference = config['libraries'][wildcards['library']]['reference']
+	return reference
+
+rule build_alignment_index:
+	wildcard_constraints:
+		library="(" + "|".join(get_libraries()) + ")"
+	input: build_alignment_index_input
+	output:
+		dir = directory("resources/references/{library}/"),
+		fasta = 'resources/references/{library}/{library}.fasta'
+	conda: 'envs/bowtie2.yaml'
+	shell:
+		"""
+		mkdir -p {output.dir}
+		cp {input} {output.fasta}
+		cd {output.dir}
+		bowtie2-build $(basename {output.fasta}) "{wildcards.library}"
+		"""
+
+
+# def align_vhh_asvs_nucleic_acid_input(wildcards):
+# 	assert wildcards.library in config.libraries, "Reference sequence for f{wildcards.library} not found in configuration file. Cannot build reference database to align nucleic acid ASVs."
+# 	return {
+# 		'seqs': "results/tables/vhh_asvs.fasta"
+# 		'reference': reference
+# 	}
+
+rule align_vhh_asvs_nucleic_acid:
+	input: #unpack(align_vhh_asvs_nucleic_acid_input)
+		seqs = "results/tables/vhh_asvs.fasta",
+		index = "resources/references/{library}/"
+	output: 
+		coord_sorted = "intermediate/align/ASVs/{library}.bam",
+		name_sorted =  "intermediate/align/ASVs/{library}-name-sorted.bam"
+	log: 'results/logs/align_vhh_asvs_nucleic_acid.{library}.log'
+	params:
+		n_penalty = 0,
+		n_ceil = 64
+	threads: workflow.cores,
+	conda: 'envs/bowtie2.yaml'
+	shell:
+		"""
+		{{
+		set -euox pipefail
+
+		output_bam_name_sorted={output.name_sorted:q}
+		output_bam_coord_sorted={output.coord_sorted:q}
+		output_name_dir=$(dirname $(readlink -m $output_bam_name_sorted))
+		mkdir -p $output_name_dir
+		output_file_name_sorted=$(basename $output_bam_name_sorted)
+
+		# intermediate .sam and -unsorted.bam files will be produced before the
+		# final .bam file. Put them in the same directory as the desired output
+		# file.
+		output_coord_dir=$(dirname $(readlink -m $output_bam_coord_sorted))
+		mkdir -p $output_coord_dir
+
+		# get absolute path to the input FASTA files before we start changing
+		# the directory
+		seqs=$(readlink -f {input.seqs:q})
+
+		# the index is a set of 6 files in a subdirectory of
+		# `resources/references`, named according to the nanobody library.
+		# `bowtie2` only looks in the current directory for this index, so we
+		# go there first, then tell it with `-x $library` to look for files like
+		# `{wildcards.library}..1.bt2`, etc.
+		index={input.index:q}
+		library={wildcards.library:q}
+		cd "$index"
+		>&2 pwd
+
+		retry_path="$output_coord_dir/$library-unaligned.fasta.gz"
+
+		# perform alignment, compress to BAM file
+		echo "Performing first alignment..."
+		bowtie2 -x $library \\
+			-U $seqs -f \
+			--local --np {params.n_penalty} --n-ceil {params.n_ceil} \\
+			--un-gz "$retry_path" --no-unal \\
+			--threads {threads} \\
+		| samtools view -b -o "$output_coord_dir/$library-first-unsorted.bam"
+
+
+		echo "Performing more sensitive alignment on un-aligned sequences..."
+		n_lines=$(zcat "$retry_path" | wc -l)
+		let n_retry_seqs=n_lines/4
+		echo "Aligning $n_retry_seqs sequences..."
+		bowtie2 -x $library \\
+			-U "$retry_path" -f \\
+			--local --np {params.n_penalty} --n-ceil {params.n_ceil} \\
+			-D 20 -R 3 -N 0 -L 18 -i S,1,0.50 \\
+			--threads {threads} \\
+		| samtools view -b -o "$output_coord_dir/$library-retry-unsorted.bam"
+
+		# make name-sorted files for merging
+		samtools sort -o "$output_name_dir/${{output_file_name_sorted}}-first" -n -@ "$(({threads}-1))" "$output_coord_dir/$library-first-unsorted.bam"
+		samtools sort -o "$output_name_dir/${{output_file_name_sorted}}-retry" -n -@ "$(({threads}-1))" "$output_coord_dir/$library-retry-unsorted.bam"
+
+		# merge name-sorted files
+		samtools merge -o "$output_name_dir/$output_file_name_sorted" \\
+			-n -@ "$(({threads}-1))" \\
+			"$output_name_dir/${{output_file_name_sorted}}-first" \\
+			"$output_name_dir/${{output_file_name_sorted}}-retry"
+
+		# sort merged file by coordinates
+		output_file_coord_sorted=$(basename $output_bam_coord_sorted)
+		samtools sort -o "$output_coord_dir/$output_file_coord_sorted" \\
+			-@ "$(({threads}-1))" \\
+			"$output_name_dir/$output_file_name_sorted"
+		samtools index "$output_coord_dir/$output_file_coord_sorted"
+
+		}} 1>{log} 2>{log}
+		"""
+
+	# shell:
+	# 	"""
+	# 	{{
+	# 	# intermediate .sam and -unsorted.bam files will be produced in this
+	# 	# directory before the final .bam file
+	# 	output_dir=$(dirname $(readlink -f {output:q}))
+	# 	output_file=$(basename {output:q})
+
+	# 	# get absolute path to the input FASTA file before we start changing
+	# 	# the directory
+	# 	seqs=$(readlink -f {input.seqs:q})
+
+	# 	# the index is a set of 6 files in a subdirectory of
+	# 	# `resources/references`, named according to the nanobody library.
+	# 	# `bowtie2` only looks in the current directory for this index, so we
+	# 	# go there first, then tell it with `-x $library` to look for files like
+	# 	# `{wildcards.library}..1.bt2`, etc.
+	# 	index={input.index:q}
+	# 	library={wildcards.library:q}
+	# 	cd "$index"
+	# 	>&2 pwd
+
+	# 	# perform alignment
+	# 	bowtie2 -x $library \
+	# 		-U $seqs -f \
+	# 		--threads {threads} \
+	# 		--local --np {params.params.n_penalty} --n-ceil {params.n_ceil} \
+	# 		-S "$output_dir"/"$library.sam"
+
+	# 	# compress, sort, and index output library
+	# 	samtools view "$output_dir/$library.sam" -b -o "$output_dir/$library-unsorted.bam"
+	# 	samtools sort "$output_dir/$library-unsorted.bam" -o "$output_dir/$library.bam"
+	# 	samtools index "$output_dir/$output_file"
+	# 	}} 1>{log} 2>{log}
+	# 	"""
+
+
+# rule align_vhh_nucleic_acid:
+# 	input:
+# 		'results/tables/vhh_asvs.fasta'
+# 	output:
+# 		'results/tables/vhh_asvs_aligned.fasta'
+# 	shell: "touch {output}"
+
+
+
+rule translate:
+	input:
+		alignment = 'intermediate/align/ASVs/{library}.bam',
+		reference = 'resources/references/{library}/{library}.fasta'
+		# 'results/tables/vhh_asvs_aligned.fasta'
+	output:
+		# 'results/tables/vhh_asvs_translated.fasta'
+		'results/tables/{library}_translated.csv'
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/translate.py'
+
+rule align_vhh_asvs_aa:
+	input:
+		translation = 'results/tables/{library}_translated.csv',
+		reference = 'resources/references/{library}/{library}.fasta'
+	output: 'results/tables/{library}_translated_aligned.csv',
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	threads: workflow.cores
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/align_aa.py'
+
+rule extract_cdrs:
+	input: 'results/tables/{library}_translated_aligned.csv'
+	output: 'results/tables/{library}_cdrs.csv'
+	conda: 'envs/biopython-pysam.yaml',
+	params:
+		CDRs = lambda wc: get_library_param(wc.library, 'CDRs')
+	script: 'scripts/extract_cdrs.py'
+
+# rule align_vhh_peptide:
+
+# include: "rules/common.smk"
+# include: "rules/other.smk"
+
+
+
+
+rule msa_asvs_clustalo:
+	wildcard_constraints:
+		# partition=list_to_regex(['top_asvs','all']),
+		space=list_to_regex(['na','aa','cdrs','cdr3'])
+	input:  'results/tables/{space}/asvs.fasta'
+	output: 'results/tables/{space}/msa-clustalo.fasta'
+	log:    'results/logs/{space}/msa-clustalo.log'
+	conda: 'envs/msa.yaml'
+	threads: 4
+	shell:"""
+	clustalo --threads {threads} --in {input} --out {output} --log {log}
+	"""
+
+rule msa_asvs_muscle:
+	wildcard_constraints:
+		# partition=list_to_regex(['top_asvs','all']),
+		space=list_to_regex(['na','aa','cdrs','cdr3'])
+	input:  'results/tables/{space}/asvs.fasta'
+	output: 'results/tables/{space}/msa-muscle.fasta'
+	log:    'results/logs/{space}/msa-muscle.log'
+	conda: 'envs/msa.yaml'
+	threads: 4
+	shell:"""
+	muscle -super5 {input} -output {output} -threads {threads} 2>&1 > {log}
+	"""
+
+rule fasttree_asvs:
+	wildcard_constraints:
+		space=list_to_regex(['na','aa','cdrs','cdr3'])
+	input:  'results/tables/{space}/msa-{method}.fasta'
+	output: 'results/tables/{space}/msa-{method}.nwk'
+	log:    'results/logs/{space}/msa-{method}/fasttree_asvs.log'
+	conda: 'envs/msa.yaml'
+	threads: 4
+	shell: """
+	{{
+	OMP_NUM_THREADS={threads}
+	FastTreeMP < {input} > {output}
+	}} >{log} 2>&1
+	"""
+
+# filter aaSVs according to critera, e.g. total lengh, length of CDRs, etc.
+rule filter_vhh_asvs_aa:
+	input:
+		aa = 'results/tables/{library}_translated_aligned.csv',
+		cdrs = 'results/tables/{library}_cdrs.csv',
+	output:
+		aa = 'results/tables/{library}_aa_filtered.csv',
+		cdrs = 'results/tables/{library}_cdrs_filtered.csv',
+	log: 'results/logs/filter_vhh_asvs_aa/{library}.log'
+	params:
+		library=lambda wc: get_library_params(wc.library)
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/filter_vhh_asvs_aa.py'
+
+rule asvs_csv_to_fasta_aa:
+	input:  'results/tables/alpaca_aa_filtered.csv'
+	output: 'results/tables/aa/asvs.fasta'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/csv_to_fasta.py'
+
+rule asvs_csv_to_fasta_cdr3:
+	input:  'results/tables/alpaca_cdrs_filtered.csv'
+	output: 'results/tables/cdr3/asvs.fasta'
+	params: 
+		seq_col='CDR3'
+	conda: 'envs/biopython-pysam.yaml'
+	script: 'scripts/csv_to_fasta.py'

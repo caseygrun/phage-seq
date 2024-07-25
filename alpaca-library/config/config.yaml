@@ -1,0 +1,45 @@
+# This file should contain everything to configure the workflow on a global scale.
+# In case of sample based data, it should be complemented by a samples.tsv file that contains
+# one row per sample. It can be parsed easily via pandas.
+# samples: "config/samples.tsv"
+
+# relative to the working directory
+raw_sequence_dir: '../input/2019-04-05-CG026d1'
+libraries:
+    alpaca:
+        reference: 'resources/references/2022-12-05_pD-VHH-2022b.fasta'
+        reference_frame_start_nt: 21
+        reference_length_aa: 150
+        # original values from 2021-02-26_CG026d1
+        # min_aa_length: 90
+        # CDRs:
+        #     CDR1: [22, 31]
+        #     CDR2: [51, 58]
+        #     CDR3: [99, 120]
+
+        # updated values from 2022-11-09_CG026n
+        # 3' end of fwd read must align to this NA position or later
+        min_fwd_end: 188
+        # 3' end of rev read must align to this NA position or earlier
+        max_rev_start: 294
+        # sum(FR2 = 17 aa; FR3 = 37 aa; min(CDR1 + CDR2 + CDR3) = 15) = 69
+        min_aa_length: 69
+        min_CDR_length:
+            CDR1: 4
+            CDR2: 6
+            CDR3: 5
+            FR4:  2
+        CDRs:
+            FR1:  [0,  21]
+            CDR1: [21, 29]
+            FR2:  [29, 46]
+            CDR2: [46, 54]
+            FR3:  [54, 92]
+            CDR3: [92, 116]
+            FR4:  [116,127]
+
+
+
+    # synthetic:
+    #     reference_frame_start: 953
+    #     reference_length: 100

@@ -1,0 +1,14 @@
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+# - bowtie2=2.3.4.3=py36h5c9b4e4_1
+# - tbb=2019.3=h04f5b5a_1000
+# - zlib=1.2.11=h1de35cc_1004
+# - perl=5.32.0=hbcb3906_0
+- bowtie2=2.3.4.3
+- tbb=2019.3
+- zlib=1.2.11
+- perl=5.32.0
+- samtools
