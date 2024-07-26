@@ -85,7 +85,7 @@ Several demonstrations of the workflow code and notebooks are available:
 
 - **`panning-minimal`, a subset of the raw data from `panning-extended` is embedded in the repository** so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library. 
 
-- **The full processed datasets for `panning-small`, `panning-massive`, `panning-extended`, and `alpaca-library` are available for exploration.** You do not need to run the workflow(s) but can explore the results interactively using the `nbseq` library. These datasets are suitable to generate the figures in the paper using the code inthe  `workflow/notebooks` subdirectories
+- **The full processed datasets for `panning-small`, `panning-massive`, `panning-extended`, and `alpaca-library` are available for download from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657).** Using these data packages, you do not need to run the workflow(s) but can explore the results interactively using the `nbseq` library. These datasets are suitable to generate the figures in the paper using the code in the  `workflow/notebooks` subdirectories. See detailed instructions below.
 
 ### `panning-minimal` self-contained demonstration
 	
