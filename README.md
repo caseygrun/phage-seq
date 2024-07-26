@@ -1,13 +1,16 @@
+# Code and Data for "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing." 
+
 Code used to process the high-throughput sequencing data in our manuscript "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing." 
 
-This repository contains five components:
+This repository contains several components:
 
-- `nbseq-workflow` contains shared code for a Snakemake-based workflow for processing raw Phage-seq sequencing data. The other directories include symbolic links to the `scripts`, conda environments (`envs`), and `rules` defined in this directory. However, each specific experiment contains its own configuration, resources, and Snakemake workflow definitions (`Snakefile` and `*.smk`).
-- `panning-small` contains code used to process the data from solid-phase and small-scale cell-based  phage display selection campaigns reported in Fig. 2
-- `panning-massive` contains code used to process the data from high-throughput cell-based phage display selection campaigns reported in Fig. 3D
-- `panning-extended` contains code used to process the data from the extended rounds of high-throughput cell-based phage display selection reported in Fig. 3E
-- `panning-minimal` is a runnable example containing a small subset of the data from `panning-extended`. The code is otherwise the same as `panning-extended`.
-
+- `nbseq-workflow` contains shared code for a Snakemake-based workflow for processing raw Phage-seq sequencing data. The other directories include symbolic links to the `scripts`, conda environments (`envs`), and `rules` defined in this directory. However, each specific experiment contains its own configuration, resources, and Snakemake workflow definitions (`Snakefile` and `*.smk`). Additionally, each experiment contains a set of Jupyter notebooks in `workflow/notebooks` which were used to generate figures in the manuscript.
+	- `panning-small` contains code used to process the data from solid-phase and small-scale cell-based  phage display selection campaigns reported in Fig. 2
+	- `panning-massive` contains code used to process the data from high-throughput cell-based phage display selection campaigns reported in Fig. 3D
+	- `panning-extended` contains code used to process the data from the extended rounds of high-throughput cell-based phage display selection reported in Fig. 3E
+	- `panning-minimal` is a self-contained, runnable example containing a small subset of the data from `panning-extended`. The code is otherwise the same as `panning-extended`.
+- `alpaca-library` contains a Snakebake-based workflow for processing data where the entire input library was sequenced using longer reads in order to characterize its diversity.
+- `other-figures` contains raw data and code used to generate other figures in the paper that do not rely on sequencing data (e.g. ELISAs and phagemid titers).
 
 ## Installation and usage
 
@@ -76,34 +79,82 @@ This repository contains five components:
 
 ## Included demonstrations
 
-Two demonstrations of the workflow code are included:
+Several demonstrations of the workflow code are included:
 
-- **`panning-minimal`: a subset of the raw data from `panning-extended` is embedded in the repository** so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library. 
+### `panning-minimal`
+
+**`panning-minimal`, a subset of the raw data from `panning-extended` is embedded in the repository** so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library. 
 	
-	The `panning-minimal` dataset consists of six selections (three biological replicates each of two different conditions), plus several samples where the raw input library was sequenced without panning. Each sample has been arbitrarily downsamples to 7500 reads for the sake of file space and processing time.
+The `panning-minimal` dataset consists of six selections (three biological replicates each of two different conditions), plus several samples where the raw input library was sequenced without panning. Each sample has been arbitrarily downsamples to 7500 reads for the sake of file space and processing time.
 
-	To run the complete workflow, follow the steps above. The analysis requires 15--30 minutes to download and install conda packages, then ~10--15 min to run on a 16-core workstation.
+To run the complete workflow, follow the steps above. The analysis requires 15--30 minutes to download and install conda packages, then ~10--15 min to run on a 16-core workstation.
 
-	After running the Snakemake workflow, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. 
+After running the Snakemake workflow, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. 
 
-	Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
+Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
 
-- **The full processed dataset for `panning-extended` is available for exploration.** You do not need to run the workflow but can explore the results interactively using the `nbseq` library. 
+### Full processed datasets
+
+**The full processed datasets for `panning-small`, `panning-massive`, `panning-extended`, and `alpaca-library` are available for exploration.** You do not need to run the workflow(s) but can explore the results interactively using the `nbseq` library. 
+
+#### `panning-extended` processed dataset
   
-	Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
+Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
-	```bash
-	cd panning-extended
-	wget https://zenodo.org/records/11246658/files/panning-extended-results.tar.gz
-	tar vzxf panning-extended-results.tar.gz
-	```
+```bash
+cd panning-extended
+wget https://zenodo.org/records/12825488/files/panning-extended-results.tar.gz
+tar vzxf panning-extended-results.tar.gz
+```
 
-	Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-minimal/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
+Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-extended/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select." There are several other Jupyter notebooks within `panning-extended/workflow/notebooks/` which produce figures that appear in the manuscript and can be executed similarly (i.e. using the `nbseq` conda environment).
 
-	The data package will create `results/` and `intermediate/` subdirectories, which will contain the full amino acid and CDR3 feature tables, feature sequences, and a SQLite database for interactive exploration. All data necessary to execute the demonstration notebook is included.
+The data package will create `results/` and `intermediate/` subdirectories, which will contain the full amino acid and CDR3 feature tables, feature sequences, and a SQLite database for interactive exploration. All data necessary to execute the demonstration notebook is included.
 
-	Note that several additional files such as various transformed feature tables and beta-diversity calculations are omitted for the sake of simplicity and file size, 
-	but they can be regenerated by running the included snakemake workflow, `workflow/downstream.smk`. Likewise, the large `mmseqs2` database (which is needed to search the dataset for VHHs with similar sequences) is not included; it can be re-generated on-demand by running `snakemake --use-conda --cores all -s workflow/downstream.smk -- intermediate/cdr3/features_db/` for the CDR3 feature space or `snakemake --use-conda --cores all -s workflow/downstream.smk -- intermediate/aa/features_db/` for the amino acid feature space.
+Note that several additional files such as various transformed feature tables and beta-diversity calculations are omitted for the sake of simplicity and file size, 
+but they can be regenerated by running the included snakemake workflow, `workflow/downstream.smk`. Likewise, the large `mmseqs2` database (which is needed to search the dataset for VHHs with similar sequences) is not included; it can be re-generated on-demand by running `snakemake --use-conda --cores all -s workflow/downstream.smk -- intermediate/cdr3/features_db/` for the CDR3 feature space or `snakemake --use-conda --cores all -s workflow/downstream.smk -- intermediate/aa/features_db/` for the amino acid feature space.
+
+#### `panning-massive` processed dataset
+  
+Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
+
+```bash
+cd panning-massive
+wget https://zenodo.org/records/12825488/files/panning-massive-results.tar.gz
+tar vzxf panning-massive-results.tar.gz
+```
+The data package will create the `results/` subdirectory, containing all data necessary to execute the Jupyter notebooks in `panning-massive/workflow/notebooks/`; these notebooks generate the figures that appear in the manuscript and can be executed as described above. 
+
+Note that the notebook `panning-massive/workflow/notebooks/fig-suppl-learning.ipynb` requires creating a different conda environment, `nbseq-xgb`; this environment can be created by running:
+
+```bash
+cd panning-massive
+conda env create -f envs/nbseq-xgb.yaml
+```
+
+#### `panning-small` processed dataset
+  
+Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
+
+```bash
+cd panning-small
+wget https://zenodo.org/records/12825488/files/panning-small-results.tar.gz
+tar vzxf panning-small-results.tar.gz
+```
+
+Then explore the notebooks in `panning-small/workflow/notebooks/`
+
+#### `alpaca-library` processed dataset
+  
+Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
+
+```bash
+cd alpaca-library
+wget https://zenodo.org/records/12825488/files/alpaca-library-results.tar.gz
+tar vzxf alpaca-library-results.tar.gz
+```
+
+Then explore the notebooks in `alpaca-library/workflow/notebooks/`.
 
 
 ## Adapting the workflow to future experiments
@@ -118,7 +169,7 @@ These workflows are designed to accommodate several realities of our experiments
 - There may be technical replicate observations at the level of library preparation
 - Different selections in the experiment may use entirely different starting phage-displayed VHH libraries with different consensus reference sequences
 
-Key elements of the data mode
+Key elements of the data model:
 
 - A **selection** refers to enrichment of a distinct population of phage-displayed VHHs via multiple rounds of panning against a particular pair of antigen conditions (e.g. counter-selection and selection bacterial cells, antigen-negative and antigen-positive protein-coated wells, etc.); For example, a selection for flagella using a _∆fliC_ mutant as the counter-selection cells and a wild-type strain as the selection cells occurring over 4 rounds of selection. 
 	- Each selection is assigned a single **"phage library"**; this mainly dictates to which _reference sequence_ reads should be aligned. For example, if selections in the experiment involved two different starting libraries---one from an alpaca immunization and one created synthetically---these would be considered different "phage libraries".
@@ -138,7 +189,6 @@ Key elements of the data mode
 
 	- `libraries`: Phage display (VHH) libraries included in this experiment. Dict where keys are
 	library names and values are objects with the following attributes:
-
 
 		- `primer_fwd` (default ""):
 		Forward primer sequence (5' to 3'); used in the `cutadapt` preprocessing step to identify reads corresponding to properly-prepared amplicons
