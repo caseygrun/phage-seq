@@ -1,5 +1,7 @@
 # Code and Data for "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing." 
 
+[![DOI](https://zenodo.org/badge/733679522.svg)](https://zenodo.org/doi/10.5281/zenodo.12863463)
+
 Code used to process the high-throughput sequencing data in our manuscript "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing." 
 
 This repository contains several components:
