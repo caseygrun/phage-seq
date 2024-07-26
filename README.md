@@ -12,9 +12,11 @@ This repository contains several components:
 - `alpaca-library` contains a Snakebake-based workflow for processing data where the entire input library was sequenced using longer reads in order to characterize its diversity.
 - `other-figures` contains raw data and code used to generate other figures in the paper that do not rely on sequencing data (e.g. ELISAs and phagemid titers).
 
+The [`nbseq`](https://github.com/caseygrun/nbseq) library is a close companion to this repository. 
+
 ## Installation and usage
 
-1. Clone this entire repository
+1. Clone this entire repository:
 
 	[Clone](https://help.github.com/en/articles/cloning-a-repository) this repository to your local system or cluster, into the place where you want to perform the data analysis:
 
@@ -54,13 +56,13 @@ This repository contains several components:
 	snakemake --use-conda -n --cores all
 	```
 
-	Each workflow can be executed by running this command from the relevant directory:
+	This will print the execution plan but not run any of the code.
+
+	Each workflow can then be executed by running this command from the relevant directory:
 
 	```bash
 	snakemake --use-conda --cores all
 	```
-
-	This will print the execution plan but not run any of the code.
 
 	Alternatively, some experiments are broken into multiple Snakemake workflows (specified in distinct `.smk` files)
 	which can be invoked individually. The workflows are arragned this way because the `preprocess` step creates lots 
@@ -79,11 +81,13 @@ This repository contains several components:
 
 ## Included demonstrations
 
-Several demonstrations of the workflow code are included:
+Several demonstrations of the workflow code and notebooks are available:
 
-### `panning-minimal`
+- **`panning-minimal`, a subset of the raw data from `panning-extended` is embedded in the repository** so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library. 
 
-**`panning-minimal`, a subset of the raw data from `panning-extended` is embedded in the repository** so that you can run the entire analysis pipeline, then interactively explore the results using the `nbseq` library. 
+- **The full processed datasets for `panning-small`, `panning-massive`, `panning-extended`, and `alpaca-library` are available for exploration.** You do not need to run the workflow(s) but can explore the results interactively using the `nbseq` library. These datasets are suitable to generate the figures in the paper using the code inthe  `workflow/notebooks` subdirectories
+
+### `panning-minimal` self-contained demonstration
 	
 The `panning-minimal` dataset consists of six selections (three biological replicates each of two different conditions), plus several samples where the raw input library was sequenced without panning. Each sample has been arbitrarily downsamples to 7500 reads for the sake of file space and processing time.
 
@@ -93,11 +97,7 @@ After running the Snakemake workflow, launch a Jupyter Lab server as described i
 
 Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select."
 
-### Full processed datasets
-
-**The full processed datasets for `panning-small`, `panning-massive`, `panning-extended`, and `alpaca-library` are available for exploration.** You do not need to run the workflow(s) but can explore the results interactively using the `nbseq` library. 
-
-#### `panning-extended` processed dataset
+### `panning-extended` processed dataset
   
 Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
@@ -107,14 +107,14 @@ wget https://zenodo.org/records/12825488/files/panning-extended-results.tar.gz
 tar vzxf panning-extended-results.tar.gz
 ```
 
-Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook `panning-extended/workflow/notebooks/analysis.ipynb`. Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select." There are several other Jupyter notebooks within `panning-extended/workflow/notebooks/` which produce figures that appear in the manuscript and can be executed similarly (i.e. using the `nbseq` conda environment).
+Then, launch a Jupyter Lab server as described in the [`nbseq` repository](http://github.com/caseygrun/nbseq), and navigate to the Jupyter notebook [`panning-extended/workflow/notebooks/analysis.ipynb`](panning-extended/workflow/notebooks/analysis.ipynb). Importantly, the first time you open this notebook, you will be prompted to choose the "notebook kernel;" this will dictate in which conda environment the Python process runs. Assuming you installed `nbseq` into an environment called `nbseq`, choose the entry titled "Python [conda env:nbseq]" and click "Select." There are several other Jupyter notebooks within [`panning-extended/workflow/notebooks/`](panning-extended/workflow/notebooks/) which produce figures that appear in the manuscript and can be executed similarly (i.e. using the `nbseq` conda environment).
 
 The data package will create `results/` and `intermediate/` subdirectories, which will contain the full amino acid and CDR3 feature tables, feature sequences, and a SQLite database for interactive exploration. All data necessary to execute the demonstration notebook is included.
 
 Note that several additional files such as various transformed feature tables and beta-diversity calculations are omitted for the sake of simplicity and file size, 
 but they can be regenerated by running the included snakemake workflow, `workflow/downstream.smk`. Likewise, the large `mmseqs2` database (which is needed to search the dataset for VHHs with similar sequences) is not included; it can be re-generated on-demand by running `snakemake --use-conda --cores all -s workflow/downstream.smk -- intermediate/cdr3/features_db/` for the CDR3 feature space or `snakemake --use-conda --cores all -s workflow/downstream.smk -- intermediate/aa/features_db/` for the amino acid feature space.
 
-#### `panning-massive` processed dataset
+### `panning-massive` processed dataset
   
 Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
@@ -123,16 +123,16 @@ cd panning-massive
 wget https://zenodo.org/records/12825488/files/panning-massive-results.tar.gz
 tar vzxf panning-massive-results.tar.gz
 ```
-The data package will create the `results/` subdirectory, containing all data necessary to execute the Jupyter notebooks in `panning-massive/workflow/notebooks/`; these notebooks generate the figures that appear in the manuscript and can be executed as described above. 
+The data package will create the `results/` subdirectory, containing all data necessary to execute the Jupyter notebooks in [`panning-massive/workflow/notebooks/`](panning-massive/workflow/notebooks/); these notebooks generate the figures that appear in the manuscript and can be executed as described above. 
 
-Note that the notebook `panning-massive/workflow/notebooks/fig-suppl-learning.ipynb` requires creating a different conda environment, `nbseq-xgb`; this environment can be created by running:
+Note that the notebook [`panning-massive/workflow/notebooks/fig-suppl-learning.ipynb`](panning-massive/workflow/notebooks/fig-suppl-learning.ipynb) requires creating a different conda environment, `nbseq-xgb`; this environment can be created by running:
 
 ```bash
 cd panning-massive
 conda env create -f envs/nbseq-xgb.yaml
 ```
 
-#### `panning-small` processed dataset
+### `panning-small` processed dataset
   
 Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
@@ -142,9 +142,9 @@ wget https://zenodo.org/records/12825488/files/panning-small-results.tar.gz
 tar vzxf panning-small-results.tar.gz
 ```
 
-Then explore the notebooks in `panning-small/workflow/notebooks/`
+Then explore the notebooks in [`panning-small/workflow/notebooks/`](panning-small/workflow/notebooks/)
 
-#### `alpaca-library` processed dataset
+### `alpaca-library` processed dataset
   
 Download and extract the processed dataset from [Zenodo](https://zenodo.org/doi/10.5281/zenodo.11246657):
 
@@ -154,8 +154,11 @@ wget https://zenodo.org/records/12825488/files/alpaca-library-results.tar.gz
 tar vzxf alpaca-library-results.tar.gz
 ```
 
-Then explore the notebooks in `alpaca-library/workflow/notebooks/`.
+Then explore the notebooks in [`alpaca-library/workflow/notebooks/`](alpaca-library/workflow/notebooks/).
 
+### `other-figures`
+
+`other-figures/data` includes the data necessary to run the notebooks within `other-figures/code`. These notebooks produce other figures in the paper.
 
 ## Adapting the workflow to future experiments
 
