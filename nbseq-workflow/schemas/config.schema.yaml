@@ -1,0 +1,78 @@
+$schema: "https://json-schema.org/draft-06/schema#"
+description: config.yaml
+properties:
+  raw_sequence_dir:
+    type: string
+    description: Path to folder containing raw input sequences (relative to the root directory for this experiment). `raw_sequence_dir` folder must contain one subdirectory for each sequencing run, named according to `ID` in `runs.tsv`.
+  scratch:
+    type: string
+    description: Path to a temporary or scratch directory
+  input_query:
+    type: string
+    description: Pandas query <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.query.html> to identify which rows in `metadata.csv` correspond to an un-panned "input" phage library. This is used downstream to build a null enrichment distribution and calculate enrichment probabilities. 
+  libraries:
+    type: object
+    description: Describes properties of each distinct input VHH library included in this experiment. Input libraries are distinct if they originated from a different biological or synthetic source and thus have a different reference sequence. For example, libraries derived from different organisms or different synthetic methodolodies will be distinct. This object should have keys which are library names (corresponding to values of `phage_library` in `samples.tsv`, converted to lowercase) and values which are objects with the following attributes.
+    properties:
+      primer_fwd:
+        type: string
+        description: Forward primer sequence (5' to 3'); used in the `cutadapt` preprocessing step to identify reads corresponding to properly-prepared amplicons
+      primer_rev:
+        type: string
+        description: Reverse primer sequence (5' to 3'); used in the `cutadapt` preprocessing step to identify reads corresponding to properly-prepared amplicons
+      reference:
+        type: string
+        description: Path to the reference sequences in FASTA format (relative to the root directory for this experiment). Typically this will be in `resources/`
+      reference_frame_start_nt:
+        default: 0
+        type: integer
+        description: Nucleic acid position (0-based) indicating the first base of the first codon of the reference sequence
+      reference_length_aa:
+        default: 0
+        type: integer
+        description: Length of the reference sequence in amino acids; if the reference sequence is longer than (`reference_frame_start_nt` + (`reference_length_aa` * 3)) nt, it will be trimmed.
+      min_fwd_end:
+        default: 0
+        type: integer
+        description: 3' (distal) end of the forward read must align to this NA position or later; position 0 is the first base of the reference sequence, irrespective of `reference_frame_start_nt`.
+      max_rev_start:
+        default: 0
+        type: integer
+        description: 3' (distal) end of reverse read must align to this NA position or earlier; position 0 is the first base of the reference sequence, irrespective of `reference_frame_start_nt`.
+      min_aa_length:
+        default: 69
+        type: integer
+        description: Reads where the aligned amino acid sequence (excluding gap characters) is shorter than this length will be dropped
+      CDRs: 
+        description: Position of CDR and FR regions within the reference sequence, in amino acid space. In this object, position 0 refers to the amino acid corresponding to  `reference_frame_start_nt`. This object should be a dict mapping domain names (e.g. 'CDR1', 'FR2', etc.) to `[start, end]` positions, where `start` is inclusive and `end` is exclusive (e.g. half-open) intervals, following the Python convention.
+        additionalProperties:
+          type: array
+          items: 
+            type: number
+          minItems: 2
+          maxItems: 2
+      min_CDR_length:
+        type: object
+        description: Reads with domains (CDR or FR regions) shorter than this length (in amino acids) will be dropped. Keys are domain names (e.g. 'CDR1', 'FR2', etc. and should correspond to domains defined in `CDRs`) and values are minimum lengths (in amino acids)
+        additionalProperties:
+          type: array
+          items: 
+            type: number
+          minItems: 2
+          maxItems: 2
+    required:
+      - primer_fwd
+      - primer_rev
+      - reference
+      - reference_frame_start_nt
+      - reference_length_aa
+      - min_fwd_end
+      - max_rev_start
+      - min_aa_length
+      - CDRs
+      - min_CDR_length
+
+required:
+  - raw_sequence_dir
+  - input_query
+  - libraries

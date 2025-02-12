@@ -1,0 +1,23 @@
+$schema: "https://json-schema.org/draft-06/schema#"
+description: phenotypes.csv
+properties: 
+  name:
+    description: name of the phenotype; must correspond to one of the columns in `metadata.csv`
+    type: string
+  type:
+    description: is the phenotype an antigen?
+    enum: ["antigen", "phenotype"]
+    type: string
+  category:
+    description: (optional) the category of antigen or phenotype, e.g. "motility", "AMR", etc.
+    type: string
+  locus:
+    description: (optional) locus tag 
+    type: string
+  description:
+    description: (optional) description of the antigen or phenotype 
+    type: string
+additionalProperties: true
+required:
+  - name
+  - type

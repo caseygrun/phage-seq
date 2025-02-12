@@ -1,0 +1,47 @@
+$schema: "https://json-schema.org/draft-06/schema#"
+description: metadata.csv. Specifies parameters of each selection. Each row represents a single selection. Columns describe parameters of the selection, including the bacterial strains used for selection and counter-selection. The following columns are required. Additional columns can be added to identify phenotypes associated with the selection
+properties: 
+  expt:
+  	description: Sub-experiment
+  	type: string
+  selection:
+  	description: Name for the selection; typically this is in the form `{plate}.{well}`, corresponding to the location within the biopanning microplate
+  	type: string
+  antigen:
+  	description: Which antigen is targeted by this selection
+  	type: string
+  background_CS:
+  	description: Genetic background for the counter-selection strain
+  	type: string
+  genotype_CS:
+  	description: Genotype of the counter-selection strain, relative to the genetic background
+  	type: string
+  strain_CS:
+  	description: Strain number or identifier of the counter-selection strain, if applicable
+  	type: string
+  cond_CS:
+  	description: Growth condition of the counter-selection cells
+  	type: string
+  background_S:
+  	description: Genetic background for the selection strain
+  	type: string
+  genotype_S:
+  	description: Genotype of the selection strain, relative to the genetic background
+  	type: string
+  strain_S:
+  	description: Strain number or identifier of the selection strain, if applicable
+  	type: string
+  cond_S:
+  	description: Growth condition of the selection cells
+    type: string
+additionalProperties: true
+required:
+  - expt
+  - selection
+  - antigen
+  - background_CS
+  - genotype_CS
+  - cond_CS
+  - background_S
+  - genotype_S
+  - cond_S

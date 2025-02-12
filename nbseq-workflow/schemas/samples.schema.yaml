@@ -1,0 +1,41 @@
+$schema: "https://json-schema.org/draft-06/schema#"
+description: samples.tsv
+properties: 
+  ID:
+    type: string
+    description: sample identifier; must be unique within this file, and must NOT contain an underscore.  There must be a pair of raw sequence files in `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}/*_{R1,R2}_*.fastq.gz` as described in the README. Generally ID has format `${plate}-${well}`, where `${plate}` and `${well}` refer to positions on the HTS library preparation plates. 
+    pattern: "^[\\w\\-]+$"
+    minLength: 1
+  expt:
+    type: string
+    description: sub-experiment name; must correspond to the same entry in metadata.yaml
+  sample:
+    type: string
+    description: name of the selection, must correspond to the `selection` column in `metadata.csv` above 
+    minLength: 1
+  round:
+    type: string
+    description: selection round, in format `R{r}{io}` where `{r}` is replaced by the round number and `{io}` is replaced with `i` for input (e.g. post-amplification) or `o` for output (e.g. pre-amplification). Columns named `r` and `io` will be generated in `metadata_full.csv` containing these values. 
+    pattern: "^R\\d+[io][\\-\\+]?$"
+  phage_library:
+    type: string
+    description: name of the input VHH library, for the sake of determining the applicable reference sequence and related parameters. Must correspond to a key within the `libraries` entry in `config.yaml`
+  plate:
+    type: string
+    description: (optional) plate number in the HTS library preparation
+  well:
+    type: string
+    description: (optional) well number in the HTS library preparation plate 
+  depth:
+    type: string
+    description: (optional) expected relative sequencing depth 
+  notes:
+    type: string
+    description: (optional) notes about the sample 
+additionalProperties: false
+required:
+  - ID
+  - expt
+  - sample
+  - round
+  - phage_library
