@@ -1,4 +1,4 @@
-# Code and Data for "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing." 
+# Code and Data for "Bacterial cell surface characterization by phage display coupled to high-throughput sequencing."
 
 [![DOI](https://zenodo.org/badge/733679522.svg)](https://zenodo.org/doi/10.5281/zenodo.12863463)
 
@@ -176,24 +176,27 @@ These workflows are designed to accommodate several realities of our experiments
 
 Key elements of the data model:
 
-- A **selection** refers to enrichment of a distinct population of phage-displayed VHHs via multiple rounds of panning against a particular pair of antigen conditions (e.g. counter-selection and selection bacterial cells, antigen-negative and antigen-positive protein-coated wells, etc.); For example, a selection for flagella using a _∆fliC_ mutant as the counter-selection cells and a wild-type strain as the selection cells occurring over 4 rounds of selection. 
+- A **selection** refers to a distinct population of phage-displayed VHHs which is enriched via multiple rounds of panning against a particular pair of antigen conditions (e.g. counter-selection and selection bacterial cells, antigen-negative and antigen-positive protein-coated wells, etc.); For example, a selection for flagella using a _∆fliC_ mutant as the antigen-negative cells and a wild-type strain as the antigen-positive cells occurring over 4 rounds. 
 	- Each selection is assigned a single **"phage library"**; this mainly dictates to which _reference sequence_ reads should be aligned. For example, if selections in the experiment involved two different starting libraries---one from an alpaca immunization and one created synthetically---these would be considered different "phage libraries".
-- A **sample** is a single technical replicate observation of a population of phage/VHHs, for example: the post-amplification ("input") phage before round 2 of the above selection, prepared for sequencing with a distinct pair of barcode sequences. 
+	- Multiple _biological replicates_ with the same  should generally be treated as _separate_ selections
+- A **sample** is a single technical replicate observation of a population of phage/VHHs. For example: the post-amplification ("input") phage before round 2 of the above selection is one sample. Each sample must be prepared separately for sequencing (e.g. with a distinct barcode sequence of barcode pair) and demultiplexed outside of this workflow into a distinct pair of .fastq.gz files.
+	- One _selection_ will generally have multiple _samples_; there will be at least one sample for each round of selection. If both the pre-amplification (output) and post-amplification (input) phage populations are sequenced at a given round, these will be separate samples. If phage are eluted from the antigen-negative cells and sequenced, this will be a separate sample. Additionally, technical replicates of the same population may be prepared. 
 - Multiple **sequencing runs** may be performed. Each sequencing run will be **denoised** separately, then replicate observations of the same _sample_ will be summed in the `feature_table` step.
 
 
 ### Configuring the workflow for future experiments
 
-`panning-extended` can be duplicated and used as a template for future experiments. Follow the installation instructions above. Duplicate the `panning-extended` directory and rename it. The following files need to be modified to suit the workflow:
+`panning-minimal` can be duplicated and used as a template for future experiments. Follow the installation instructions above. Duplicate the `panning-minimal` directory and rename it to your project of interest. The following files need to be modified to suit the workflow. Note that all file paths are relative to this directory (e.g. whatever you rename your copy of `panning-minimal`):
 
 1. Edit `config.yaml` to configure the experiment and specify features of the starting VHH library/libraries, namely: 
 
-	- `raw_sequence_dir`: Path to folder containing raw input sequences
+	- `raw_sequence_dir`: Path to folder containing raw input sequences. This folder must contain one subdirectory for each sequencing run, named according to `ID` in `runs.tsv`.
 
-	- `scratch`: Path to scratch directory
+	- `scratch`: Path to a temporary or scratch directory
 
-	- `libraries`: Phage display (VHH) libraries included in this experiment. Dict where keys are
-	library names and values are objects with the following attributes:
+	- `input_query`: Pandas query <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.query.html> to identify which rows in `metadata.csv` correspond to an un-panned "input" phage library. This is used downstream to build a null enrichment distribution and calculate enrichment probabilities. One way to accomplish this is to give the input library a distinct value for `expt` (e.g. set the `expt` column to `'input.library'` then set `input_query` to `expt == 'input.library'` ).
+
+	- `libraries`: Describes properties of each distinct input VHH library included in this experiment. Input libraries are distinct if they originated from a different biological or synthetic source and thus have a different reference sequence. For example, libraries derived from different organisms or different synthetic methodolodies will be distinct. This object should have keys which are library names (corresponding to values of `phage_library` in `samples.tsv`, converted to lowercase) and values which are objects with the following attributes.
 
 		- `primer_fwd` (default ""):
 		Forward primer sequence (5' to 3'); used in the `cutadapt` preprocessing step to identify reads corresponding to properly-prepared amplicons
@@ -247,38 +250,38 @@ Key elements of the data model:
 
 2. Edit `metadata.csv` to specify parameters of each **selection**. Each row represents a single selection. Columns describe parameters of the selection, including the bacterial strains used for selection and counter-selection. The following columns are required. Additional columns can be added to identify phenotypes associated with the selection. 
 
-	|     Column    |                                                              Description                                                               |
-	|---------------|----------------------------------------------------------------------------------------------------------------------------------------|
-	| expt          | Sub-experiment                                                                                                                         |
-	| selection     | Name for the selection; typically this is in the form `{plate}.{well}`, corresponding to the location within the biopanning microplate |
-	| antigen       | Which antigen is targeted by this selection                                                                                            |
-	| background_CS | Genetic background for the counter-selection strain                                                                                    |
-	| genotype_CS   | Genotype of the counter-selection strain, relative to the genetic background                                                           |
-	| strain_CS     | Strain number or identifier of the counter-selection strain, if applicable                                                             |
-	| cond_CS       | Growth condition of the counter-selection cells                                                                                        |
-	| background_S  | Genetic background for the selection strain                                                                                            |
-	| genotype_S    | Genotype of the selection strain, relative to the genetic background                                                                   |
-	| strain_S      | Strain number or identifier of the selection strain, if applicable                                                                     |
-	| cond_S        | Growth condition of the selection cells                                                                                                |
+	|     Column    |                                                               Description                                                               |
+	|---------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+	| expt          | Sub-experiment name/number. Must correspond to the same column in `samples.tsv`                                                         |
+	| selection     | Name for the selection; typically this is in the form `{plate}.{well}`, corresponding to the location within the biopanning microplate. |
+	| antigen       | Which antigen is targeted by this selection                                                                                             |
+	| background_CS | Genetic background for the counter-selection strain                                                                                     |
+	| genotype_CS   | Genotype of the counter-selection strain, relative to the genetic background                                                            |
+	| strain_CS     | Strain number or identifier of the counter-selection strain, if applicable                                                              |
+	| cond_CS       | Growth condition of the counter-selection cells                                                                                         |
+	| background_S  | Genetic background for the selection strain                                                                                             |
+	| genotype_S    | Genotype of the selection strain, relative to the genetic background                                                                    |
+	| strain_S      | Strain number or identifier of the selection strain, if applicable                                                                      |
+	| cond_S        | Growth condition of the selection cells                                                                                                 |
 
 3. Edit `phenotypes.csv` to provide information about the phenotypes, e.g. biological covariates of each selection denoted by additional columns of `metadata.csv`. Importantly, you may want to mark certain phenotypes as "antigens" for the sake of classifier training routines.
 
-	|    Column   |                                   Description                                    |
-	|-------------|----------------------------------------------------------------------------------|
-	| name        | name of the phenotype; should correspond to one of the columns in `metadata.csv` |
-	| type        | "antigen" or "phenotype"                                                         |
-	| category    | (optional) the category of antigen or phenotype, e.g. "motility"                 |
-	| locus       | (optional) locus tag                                                             |
-	| description | (optional) description of the antigen or phenotype                               |
+	|    Column   |                                  Description                                   |
+	|-------------|--------------------------------------------------------------------------------|
+	| name        | name of the phenotype; must correspond to one of the columns in `metadata.csv` |
+	| type        | "antigen" or "phenotype"                                                       |
+	| category    | (optional) the category of antigen or phenotype, e.g. "motility"               |
+	| locus       | (optional) locus tag                                                           |
+	| description | (optional) description of the antigen or phenotype                             |
 
 4. Edit `samples.tsv` to list each **technical replicate**:
 
 	
 	|     Column    |                                                                                           Description                                                                                            |
 	|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-	| ID            | sample identifier, generally `{plate}-{well}`; should correspond to a pair of raw sequence files described below                                                                                 |
+	| ID            | sample identifier, generally `{plate}-{well}`; must correspond to a pair of raw sequence files described below                                                                                   |
 	| expt          | sub-experiment number                                                                                                                                                                            |
-	| sample        | **name of the selection**, corresponds to **selection** column in `metadata.csv` above                                                                                                           |
+	| sample        | **name of the selection**; must correspond to **selection** column in `metadata.csv` above                                                                                                       |
 	| round         | selection round, in format `R{n}{io}` where `{n}` is replaced by the round number and `{io}` is replaced with `i` for input (e.g. post-amplification) or `o` for output (e.g. pre-amplification) |
 	| phage_library | name of the starting library, for the sake of determining the applicable reference sequence and related parameters. Must correspond to a key within the `libraries` entry in `config.yaml`       |
 	| plate         | (optional) HTS library preparation plate number                                                                                                                                                  |
@@ -288,10 +291,18 @@ Key elements of the data model:
 
 5. Edit `runs.tsv` to specify details about each sequencing run. The only required column is `ID`; each run must have a corresponding directory in `${raw_sequence_dir}/${ID}` containing the demultiplexed sequencing data as described below. Additional columns may be used to record other data about the run, e.g. instrument, flow cell ID, date, etc.
 
-6. Add the raw data to the path `raw_sequence_dir` specified in `config.yaml` (by default, this is a directory called `input`): 
-	- There should be a subdirectory for each sequencing run, i.e.: `${raw_sequence_dir}/${sequencing_run_ID}`
-	- There should be a folder for each sample, i.e. `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}`, where `${sequencing_run_ID}` corresponds to the column `ID` in `runs.tsv` above
-	- Within that sample, there should be two files named `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}/*_R1_*.fastq.gz` and `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}/*_R2_*.fastq.gz` containing the forward and reverse reads respectively. `${sample_id}` corresponds to the column `ID` in `samples.tsv` above
+6. Add the raw sequencing data to the input directory (the path specified by `raw_sequence_dir` in `config.yaml`; by default, this is a directory called `input`): 
+	- There must be one subdirectory for each sequencing run, i.e.: `${raw_sequence_dir}/${sequencing_run_ID}`
+	- Within each run subdirectory, there must be one folder for each sample, i.e. `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}`, where `${sequencing_run_ID}` corresponds to the column `ID` in `runs.tsv` above and `${sample_id}` corresponds to the `ID` column in `samples.tsv`.
+	- Within that sample directory `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}`, there should be two files named:
+		- `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}/*_R1_*.fastq.gz` containing the forward reads, and
+		- `${raw_sequence_dir}/${sequencing_run_ID}/Sample_${sample_id}/*_R2_*.fastq.gz` containing the reverse reads 
+
+7. Remove `guids.tsv`, `metadata_full.csv`, and `metadata_full.tsv` from the `config/` directory; these files will be regenerated by the workflow:
+
+	```bash
+	rm config/guids.tsv config/metadata_full.csv config/metadata_full.tsv
+	```
 
 
 
