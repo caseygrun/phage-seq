@@ -304,6 +304,14 @@ Key elements of the data model:
 	rm config/guids.tsv config/metadata_full.csv config/metadata_full.tsv
 	```
 
+Once you have prepared the configuration and input data, you can use the validation workflow to check your work:
+
+```bash
+snakemake --snakefile workflow/rules/validate.smk --directory .
+```
+
+This will give you a comprehensive report and describe how to correct any errors. 
+
 ### FAQ
 
 0. What is the general organization of the workflow code?
