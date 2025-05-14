@@ -320,20 +320,20 @@ This will give you a comprehensive report and describe how to correct any errors
 
 	Each experiment from the paper has an analysis workflow in a separate subdirectory of this repository (`panning-small`, `panning-extended`, `panning-minimal`). Each of these subdirectories contains Snakemake workflows, configuration, and associated code:
 
-		- Several Snakemake workflow definitions (`workflow/Snakefile` and `workflow/*.smk`). These are mostly the same between different experiments.
-		- Configuration specific to that workflow in the `config/` subdirectory; files within specify which samples are included in the experiment, the structure of the reference sequence(s)
-		- The `resources/` subdirectory, which contains the VHH reference sequence(s) to which reads are aligned
-		- Jupyter Notebooks in `workflow/notebooks` which make plots that appear in the paper
-		- Symbolic links within `workflow` to `scripts`, conda environment definitions (`envs`), and Snakemake `rules` in the top-level `nbseq-workflow` directory; this code is shared across multiple experiments. 
+	- Several Snakemake workflow definitions (`workflow/Snakefile` and `workflow/*.smk`). These are mostly the same between different experiments.
+	- Configuration specific to that workflow in the `config/` subdirectory; files within specify which samples are included in the experiment, the structure of the reference sequence(s)
+	- The `resources/` subdirectory, which contains the VHH reference sequence(s) to which reads are aligned
+	- Jupyter Notebooks in `workflow/notebooks` which make plots that appear in the paper
+	- Symbolic links within `workflow` to `scripts`, conda environment definitions (`envs`), and Snakemake `rules` in the top-level `nbseq-workflow` directory; this code is shared across multiple experiments. 
 
 	Note that the input data is stored outside this repository, except for `panning-minimal` (see "[Included demonstrations](#included-demonstrations)" above).
 
 	The Snakemake workflows are broken into several parts:
 
-		- `workflow/preprocess.smk`: identifies and trims the primer sequences from reads, dereplicates and filters reads by quality, and denoises reads to remove sequencing errors using Dada2. This is the most computationally-intensive part of the workflow. The output is a **feature table** (a matrix of samples by VHH nucleic acid sequences) for each sequencing run and a list of VHH nucleic acid sequences. 
-		- `workflow/feature_table.smk`: aligns these nucleic acid sequences to a reference sequence, translates them to amino acids, sums reads corresponding to identical or overlapping amino acid sequences, and similarly constructs feature tables which combine reads with identical clonotypes (CDR1--3 sequence) or CDR3 sequence
-		- `workflow/downstream.smk`: performs various transformations on the feature tables, including calculating alpha diversity, pairwise sample distance/beta diversity, ordination (dimensionality reduction), multiple sequence alignment and phylogeny calculation of VHHs, and machine learning classification of selections.
-		- `workflow/Snakefile` invokes each of the above sub-workflows. 
+	- `workflow/preprocess.smk`: identifies and trims the primer sequences from reads, dereplicates and filters reads by quality, and denoises reads to remove sequencing errors using Dada2. This is the most computationally-intensive part of the workflow. The output is a **feature table** (a matrix of samples by VHH nucleic acid sequences) for each sequencing run and a list of VHH nucleic acid sequences. 
+	- `workflow/feature_table.smk`: aligns these nucleic acid sequences to a reference sequence, translates them to amino acids, sums reads corresponding to identical or overlapping amino acid sequences, and similarly constructs feature tables which combine reads with identical clonotypes (CDR1--3 sequence) or CDR3 sequence
+	- `workflow/downstream.smk`: performs various transformations on the feature tables, including calculating alpha diversity, pairwise sample distance/beta diversity, ordination (dimensionality reduction), multiple sequence alignment and phylogeny calculation of VHHs, and machine learning classification of selections.
+	- `workflow/Snakefile` invokes each of the above sub-workflows. 
 		
 	It is recommended to run `workflow/Snakefile` directly to execute the entire workflow top-to-bottom (this is what happens by default when you run `snakemake` from within an experiment subdirectory). However, the sub-workflows are separated because it may be useful to archive or delete intermediate files after completing the `preprocess` or `feature_table` steps, in order to save storage space. The `feature_table.smk` or `downstream.smk` workflows can then be executed independently. .
 
