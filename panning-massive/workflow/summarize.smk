@@ -1,6 +1,10 @@
-include: './rules/common.smk'
+# include: './rules/common.smk'
 
-rule all:
+include: "preprocess.smk"
+include: "feature_table.smk"
+include: "downstream.smk"
+
+rule summarize_all:
 	input:
 		# summaries
 		expand('intermediate/{run}/sample_summary_reads.txt',    run=get_runs()),
