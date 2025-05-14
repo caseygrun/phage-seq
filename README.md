@@ -304,5 +304,70 @@ Key elements of the data model:
 	rm config/guids.tsv config/metadata_full.csv config/metadata_full.tsv
 	```
 
+### FAQ
+
+0. What is the general organization of the workflow code?
+
+	The analysis pipelines are written using [Snakemake](https://snakemake.github.io) workflows. A Snakemake workflow is composed of **rules** which describe how to convert input files into output files. The first "rule" of each workflow describes the target of the workflow---which output file(s) the workflow should try to create. The [`snakemake`](https://snakemake.github.io) executable reads the workflow and the configuration files, examines the available input (and output) file(s), and figures out how to create the output from the input by running rules. This process is designed to be **reproducible** (i.e. the workflow can be run again on the same input to yield the same output), **portable** (i.e. all code and dependencies are specified by the workflow repository), and **robust** (i.e. the workflow can be interrupted and can resume execution with minimal loss of time/progress).
+
+	Each experiment from the paper has an analysis workflow in a separate subdirectory of this repository (`panning-small`, `panning-extended`, `panning-minimal`). Each of these subdirectories contains Snakemake workflows, configuration, and associated code:
+
+		- Several Snakemake workflow definitions (`workflow/Snakefile` and `workflow/*.smk`). These are mostly the same between different experiments.
+		- Configuration specific to that workflow in the `config/` subdirectory; files within specify which samples are included in the experiment, the structure of the reference sequence(s)
+		- The `resources/` subdirectory, which contains the VHH reference sequence(s) to which reads are aligned
+		- Jupyter Notebooks in `workflow/notebooks` which make plots that appear in the paper
+		- Symbolic links within `workflow` to `scripts`, conda environment definitions (`envs`), and Snakemake `rules` in the top-level `nbseq-workflow` directory; this code is shared across multiple experiments. 
+
+	Note that the input data is stored outside this repository, except for `panning-minimal` (see "[Included demonstrations](#included-demonstrations)" above).
+
+	The Snakemake workflows are broken into several parts:
+
+		- `workflow/preprocess.smk`: identifies and trims the primer sequences from reads, dereplicates and filters reads by quality, and denoises reads to remove sequencing errors using Dada2. This is the most computationally-intensive part of the workflow. The output is a **feature table** (a matrix of samples by VHH nucleic acid sequences) for each sequencing run and a list of VHH nucleic acid sequences. 
+		- `workflow/feature_table.smk`: aligns these nucleic acid sequences to a reference sequence, translates them to amino acids, sums reads corresponding to identical or overlapping amino acid sequences, and similarly constructs feature tables which combine reads with identical clonotypes (CDR1--3 sequence) or CDR3 sequence
+		- `workflow/downstream.smk`: performs various transformations on the feature tables, including calculating alpha diversity, pairwise sample distance/beta diversity, ordination (dimensionality reduction), multiple sequence alignment and phylogeny calculation of VHHs, and machine learning classification of selections.
+		- `workflow/Snakefile` invokes each of the above sub-workflows. 
+		
+	It is recommended to run `workflow/Snakefile` directly to execute the entire workflow top-to-bottom (this is what happens by default when you run `snakemake` from within an experiment subdirectory). However, the sub-workflows are separated because it may be useful to archive or delete intermediate files after completing the `preprocess` or `feature_table` steps, in order to save storage space. The `feature_table.smk` or `downstream.smk` workflows can then be executed independently. .
+
+1. **Where should the input data for the workflows be placed?**
+
+	The input data should be placed in a subdirectory called `input` within the experiment directory (for example, `panning-extended/input`). Alternatively, the input data can be placed elsewhere and symbolic linked from `raw_sequence_dir`. 
+
+	See section "[Included demonstrations](#included-demonstrations)" to obtain processed _output_ data (`results` and `intermediate`). 
+
+2. **Where is the output of the workflow stored?**
+
+	Output of the workflow is stored in three directories:
+
+	- `config/`: some processing of the provided metadata (`samples.tsv`, `metadata.csv`, `runs.tsv`, `phenotypes.csv`) is done and stored in the files `metadata_full.csv`, `metadata_full.tsv` (these two have the same content), and `guids.tsv`. 
+	- `intermediate/`: contains files resulting from intermediate steps in the workflow that are either not important for final interpretation *or* are fast/straightforward to re-generate from the file contents of `results/`
+	- `results/`: contains the substantive output of the workflow
+		- `logs/`: contains log files recording the output of each rule from the snakemake workflow. Generally, these are named the same as the rule name in the workflow. It's gonna be useful for debugging if a rule exits due to an error.
+		- `runs/`: contains one subdirectory for each sequencing run. The denoising is first performed separately for each sequencing run, because the error characteristics/batch effects may differ across sequencing runs; later, feature tables from each sequencing run are summed. 
+		- `plots/`: contains plots generated by the workflow and/or the Jupyter notebooks in `workflow/notebooks`
+		- `tables/`: contains the feature tables and feature sequences themselves. Contains sub directories for each of 3 "feature spaces;" the "feature space" describes what the columns of the feature table mean (the rows are generally samples):
+			- `aa`: columns represent distinct VHH amino acid sequences; reads from any columns in the original feature table which translate to the same amino acid sequence are summed.
+			- `cdrs`: columns represent VHHs with distinct CDR1, 2, and 3 sequence; columns in the `aa` feature table which differ only in the framework sequences (FR1, 2, 3, 4) are summed.
+			- `cdr3`: columns represent VHHs with distinct CDR3 sequences
+
+3. **I ran `snakemake` non-interactively  (e.g. as a batch job) and I can't tell whether it completed successfuly.**
+
+	First, check whether your batch job is still running (e.g. if using slurm, you can use `squeue`)! If it is not...
+
+	Second, check the log files created by `snakemake`; these essentially have the same content as is printed to stdout while `snakemake` is running. Within the working directory for some experiment (e.g. `panning-minimal`), these files are in `.snakemake/log` (e.g. `panning-minimal/.snakemake/log`; note the `.` in `.snakemake`!). Scroll to the bottom of that file to give you some clue whether snakemake completed successfully or exited due to an error. 
+
+	Third, whether or not there was obviously an error, check the rule-specific log(s) for the last rule or rules to run. Each rule generally has a log in `results/logs/{rule}.log` or similar; this path should also be given in the main snakemake log.
+
+	Third, try running `snakemake --dry-run` again. If the output looks reasonable, then run `snakemake`; if it continues successfully, problem solved. If you get a message about the working directory being locked (this happens sometimes if your job is killed by your HPC cluster scheduler), you may need to run `snakemake --unlock`. If `snakemake` died in the middle of a task, you may get a message about how the output files are incomplete; run `snakemake --rerun-incomplete`. 
+4. I've run part of the workflow, but now `snakemake` wants to re-run a bunch of rules, perhaps even the whole workflow.
+
+	Snakemake will, by default, re-run a rule _and all rules that depend on that rule's output_ if any of the following have changed since the rule was last run:
+
+	- Input files for that rule (modification time or `mtime` specifically has changed, even if file content has not)
+	- Code for that rule
+	- Any parameters (`params`) to the rule
+	- The `conda` environment
+	
+	This may have happened because you changed any of the above. Moving files usually doesn't trigger this, but moving `conda` environments can. You can approach this by changing `--rerun-triggers mtime`
 
 
